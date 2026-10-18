@@ -22,7 +22,7 @@ if (params.has("no3d") || !webglOK()) {
   done();
 } else {
   import("./scene.js")
-    .then((m) => { m.startScene({ lite: lowPower, reduced }); done(); })
+    .then((m) => { const r = m.startScene({ lite: lowPower, reduced }); Promise.race([r, new Promise((res) => setTimeout(res, 4500))]).then(done); })
     .catch((err) => { console.warn("3D disabled:", err); document.documentElement.classList.add("no3d"); done(); });
 }
 
