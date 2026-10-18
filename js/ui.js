@@ -86,6 +86,7 @@ function initReveals() {
     gsap.from(el, { y: 60, opacity: 0, duration: 0.9, ease: "power3.out", scrollTrigger: { trigger: el, start: "top 88%", once: true } });
   });
   gsap.to(".hero-copy", { y: -120, opacity: 0, ease: "none", scrollTrigger: { trigger: "#hero", start: "top top", end: "70% top", scrub: true } });
+  gsap.to("#stage-rise .sticky-cap", { opacity: 0, ease: "none", scrollTrigger: { trigger: "#stage-rise", start: "62% top", end: "80% top", scrub: true } });
   gsap.to(".scroll-hint", { opacity: 0, ease: "none", scrollTrigger: { trigger: "#hero", start: "top top", end: "20% top", scrub: true } });
 }
 
