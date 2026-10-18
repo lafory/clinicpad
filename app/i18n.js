@@ -1,11 +1,11 @@
 // ClinicPad V1 — textos y catálogos bilingües (ES por defecto / EN)
 window.I18N = {
   es: {
-    appName: (window.BRAND || 'ClinicPad'), langBtn: 'English', footer: 'Prototipo de demostración. No es consejo médico ni un dispositivo médico. Diseñado para ayudar a prevenir que se pasen por alto alergias o tomas de presión. No guarda datos de pacientes.',
+    appName: (window.BRAND || 'ClinicPad'), langBtn: 'English', footer: 'Prototipo de demostración. No es consejo médico ni un dispositivo médico. Diseñado para ayudar a prevenir que se pasen por alto alergias o tomas de presión. Funciona sin internet: los datos de pacientes no salen de esta tablet; si la clínica lo activa, las visitas de hoy quedan cifradas en la tablet y se borran al final del día. Revíselo con su encargado de cumplimiento o un abogado.',
     next: 'Siguiente', back: 'Atrás', skip: 'Omitir', yes: 'Sí', no: 'No', notApplicable: 'No aplica', add: 'Agregar', clear: 'Borrar', save: 'Guardar', cancel: 'Cancelar', other: 'Otro (escriba)',
     setupTitle: 'Configuración del proveedor', setupIntro: 'Se configura una vez por tablet. Estos datos son del consultorio, no de pacientes.',
     docName: 'Nombre del doctor/proveedor', clinicName: 'Nombre de la clínica', clinicAddr: 'Dirección / teléfono de la clínica (opcional)', licenseNo: 'Número de licencia profesional', specialty: 'Especialidad principal',
-    pin: 'PIN del personal (4–6 dígitos)', pin2: 'Repita el PIN', provSig: 'Firma del proveedor (se puede usar en cada visita)', customQ: 'Preguntas obligatorias propias de la clínica', customQHint: 'Una por línea. Se agregan al checklist de seguridad.', timeout: 'Auto-borrado por inactividad (minutos)',
+    pin: 'PIN del personal (4–6 dígitos)', pin2: 'Repita el PIN', provSig: 'Firma del proveedor (se puede usar en cada visita)', customQ: 'Preguntas obligatorias propias de la clínica', customQHint: 'Una por línea. Se agregan al checklist de seguridad.', timeout: 'Bloqueo por inactividad (minutos; borra la visita en curso)',
     saveEnc: 'Recordar esta configuración en la tablet (cifrada con el PIN). Nunca incluye datos de pacientes.', startUsing: 'Guardar y empezar',
     unlockTitle: 'Configuración guardada encontrada', unlockIntro: 'Ingrese el PIN del personal para desbloquearla.', unlock: 'Desbloquear', forget: 'Borrar configuración guardada', badPin: 'PIN incorrecto', pinMismatch: 'Los PIN no coinciden o tienen menos de 4 dígitos', required: 'Complete los campos obligatorios',
     startTitle: 'Bienvenido', startPrompt: 'Ingrese su nombre para comenzar', namePh: 'Nombre y apellido', begin: 'Comenzar', staffSettings: 'Ajustes (personal)',
@@ -25,15 +25,15 @@ window.I18N = {
     checklist: 'Checklist de seguridad (obligatorio)', clLocked: 'Exportar e imprimir bloqueados: puntos pendientes: {n}', clUnlocked: 'Checklist completo', sigMissing: 'Falta la firma del proveedor',
     provSigTitle: 'Firma del proveedor', useSaved: 'Usar firma guardada', pdfLang: 'Idioma del PDF', exportPdf: 'Exportar PDF', printPdf: 'Imprimir', cancelVisit: 'Cancelar y borrar visita', confirmCancel: '¿Borrar todos los datos de esta visita?',
     doneTitle: 'Registro generado', doneText: 'El PDF se generó. Todos los datos de la visita se borraron de la tablet.', nextPatient: 'Siguiente paciente',
-    idleTitle: '¿Sigue ahí?', idleText: 'Por privacidad, los datos se borrarán en {s} segundos.', idleKeep: 'Continuar',
-    wiped: 'Datos borrados por inactividad.', painNone: 'Sin dolor', painWorst: 'Peor dolor'
+    idleTitle: '¿Sigue ahí?', idleText: 'Por privacidad, la visita en curso se borrará y la pantalla volverá al inicio en {s} segundos.', idleKeep: 'Continuar',
+    wiped: 'Pantalla bloqueada por inactividad: visita en curso borrada.', painNone: 'Sin dolor', painWorst: 'Peor dolor'
   },
   en: {
-    appName: (window.BRAND || 'ClinicPad'), langBtn: 'Español', footer: 'Demo prototype. Not medical advice or a medical device. Designed to help prevent missed allergy or blood-pressure checks. Does not store patient data.',
+    appName: (window.BRAND || 'ClinicPad'), langBtn: 'Español', footer: 'Demo prototype. Not medical advice or a medical device. Designed to help prevent missed allergy or blood-pressure checks. Works without internet: patient data never leaves this tablet; if the clinic enables it, today\'s visits stay encrypted on the tablet and are erased at the end of the day. Review this with your compliance person or a lawyer.',
     next: 'Next', back: 'Back', skip: 'Skip', yes: 'Yes', no: 'No', notApplicable: 'N/A', add: 'Add', clear: 'Clear', save: 'Save', cancel: 'Cancel', other: 'Other (type)',
     setupTitle: 'Provider setup', setupIntro: 'Set up once per tablet. This is practice information, not patient data.',
     docName: 'Doctor/provider name', clinicName: 'Clinic name', clinicAddr: 'Clinic address / phone (optional)', licenseNo: 'Professional license number', specialty: 'Primary specialty',
-    pin: 'Staff PIN (4–6 digits)', pin2: 'Repeat PIN', provSig: 'Provider signature (can be reused each visit)', customQ: 'Clinic-specific required questions', customQHint: 'One per line. Added to the safety checklist.', timeout: 'Inactivity auto-wipe (minutes)',
+    pin: 'Staff PIN (4–6 digits)', pin2: 'Repeat PIN', provSig: 'Provider signature (can be reused each visit)', customQ: 'Clinic-specific required questions', customQHint: 'One per line. Added to the safety checklist.', timeout: 'Inactivity lock (minutes; clears the visit in progress)',
     saveEnc: 'Remember this setup on the tablet (encrypted with the PIN). Never includes patient data.', startUsing: 'Save and start',
     unlockTitle: 'Saved setup found', unlockIntro: 'Enter the staff PIN to unlock it.', unlock: 'Unlock', forget: 'Delete saved setup', badPin: 'Wrong PIN', pinMismatch: 'PINs do not match or are shorter than 4 digits', required: 'Please fill in the required fields',
     startTitle: 'Welcome', startPrompt: 'Enter your name to begin', namePh: 'First and last name', begin: 'Begin', staffSettings: 'Settings (staff)',
@@ -53,8 +53,8 @@ window.I18N = {
     checklist: 'Safety checklist (required)', clLocked: 'Export and print lockeditems left: {n}', clUnlocked: 'Checklist complete', sigMissing: 'Provider signature missing',
     provSigTitle: 'Provider signature', useSaved: 'Use saved signature', pdfLang: 'PDF language', exportPdf: 'Export PDF', printPdf: 'Print', cancelVisit: 'Cancel and wipe visit', confirmCancel: 'Wipe all data for this visit?',
     doneTitle: 'Record generated', doneText: 'The PDF was generated. All visit data has been wiped from the tablet.', nextPatient: 'Next patient',
-    idleTitle: 'Still there?', idleText: 'For privacy, data will be wiped in {s} seconds.', idleKeep: 'Continue',
-    wiped: 'Data wiped due to inactivity.', painNone: 'No pain', painWorst: 'Worst pain'
+    idleTitle: 'Still there?', idleText: 'For privacy, the visit in progress will be cleared and the screen will return to the start in {s} seconds.', idleKeep: 'Continue',
+    wiped: 'Screen locked due to inactivity: visit in progress cleared.', painNone: 'No pain', painWorst: 'Worst pain'
   }
 };
 const L = (es, en) => ({ es, en });
@@ -187,4 +187,46 @@ Object.assign(I18N.en, {
   expOpenHereConfirm: 'The PDF will open in this same tab and the visit will be closed and erased from the app. Save or share the PDF from the viewer. Continue?',
   expKeep: 'Visit data stays until you tap "Done" (or the idle timeout).',
   expBack: 'Back to visit', expDone: 'Done: erase visit',
+});
+// v3b: offline printing (AirPrint / Mopria)
+Object.assign(I18N.es, {
+  lockHint: 'Toque «Imprimir» o «Exportar» para ver qué falta.',
+  expPrint: 'Imprimir de nuevo',
+  exp_printDialog: 'Se abrió el diálogo de impresión (AirPrint en iPad/iPhone, Mopria o servicio de impresión en Android). Elija la impresora de la clínica. Si no apareció, toque «Imprimir de nuevo».',
+  exp_printFail: 'No se pudo abrir la impresión. Use «Exportar PDF» o «Compartir». Los datos NO se borraron.',
+});
+Object.assign(I18N.en, {
+  lockHint: 'Tap "Print" or "Export" to see what is missing.',
+  expPrint: 'Print again',
+  exp_printDialog: 'The print dialog opened (AirPrint on iPad/iPhone, Mopria or the print service on Android). Choose the clinic printer. If it did not appear, tap "Print again".',
+  exp_printFail: 'Printing could not open. Use "Export PDF" or "Share". The data was NOT erased.',
+});
+// v4: "Visitas de hoy" (encrypted on-device, auto-deleted)
+Object.assign(I18N.es, {
+  retTitle: 'Visitas de hoy en la tablet', retIntro: 'Cuánto tiempo se guardan las visitas terminadas (cifradas) para reimprimirlas o reexportarlas.',
+  ret_eod: 'Borrar al final del día', ret_24h: 'Borrar en 24 horas', ret_now: 'Borrar pacientes ahora', ret_eodAt: 'se borran a las {t} (hora de cierre)',
+  closeTime: 'Hora de cierre (todo se borra a esta hora)',
+  retPrivacy: 'Privacidad: sin internet. Si se activa, la app guarda las visitas de hoy SOLO en esta tablet, cifradas (AES-GCM) con una clave derivada del PIN del proveedor y del PIN de administrador, y las borra al final del día (o a las 24 h). Con «Borrar pacientes ahora» no guarda nada. Revise esta configuración con su encargado de cumplimiento o un abogado (HIPAA).',
+  closeDay: 'Cerrar el día / Borrar todo ahora', closeDayConfirm: '¿Borrar AHORA todas las visitas guardadas en esta tablet? No se puede deshacer.', closeDayDone: 'Todas las visitas guardadas fueron borradas.',
+  todayBtn: 'Visitas de hoy', todayTitle: 'Visitas de hoy', todayWhoIntro: 'Cada proveedor ve sus propias visitas con su PIN. El administrador ve todas.',
+  adminAll: 'Administrador', adminAllHint: 'Ver todas las visitas',
+  allergyFlag: 'ALERGIAS', noAllergyFlag: 'Sin alergias', allergyUnknownFlag: 'No sabe', openVisit: 'Ver',
+  patientOne: 'paciente atendido', patientMany: 'pacientes atendidos', todayEmpty: 'No hay visitas guardadas.',
+  todayInfo: 'Guardadas cifradas solo en esta tablet; {t}.', todayExit: 'Salir', readOnly: 'Solo lectura', backList: 'Volver a la lista',
+  doneTextKept: 'La pantalla quedó limpia. La visita quedó guardada cifrada en «Visitas de hoy» hasta {t}; luego se borra sola.',
+  visitSaved: 'Visita guardada cifrada en «Visitas de hoy» (se borra: {t}).',
+});
+Object.assign(I18N.en, {
+  retTitle: "Today's visits on the tablet", retIntro: 'How long finished visits are kept (encrypted) to re-print or re-export them.',
+  ret_eod: 'Erase at end of day', ret_24h: 'Erase after 24 hours', ret_now: 'Erase patients now', ret_eodAt: 'erased at {t} (closing time)',
+  closeTime: 'Closing time (everything is erased at this time)',
+  retPrivacy: "Privacy: no internet. If enabled, the app keeps today's visits ONLY on this tablet, encrypted (AES-GCM) with a key derived from the provider PIN and the admin PIN, and erases them at the end of the day (or after 24 h). With \"Erase patients now\" nothing is kept. Review this setting with your compliance person or a lawyer (HIPAA).",
+  closeDay: 'Close the day / Erase all now', closeDayConfirm: 'Erase ALL visits stored on this tablet NOW? This cannot be undone.', closeDayDone: 'All stored visits were erased.',
+  todayBtn: "Today's visits", todayTitle: "Today's visits", todayWhoIntro: 'Each provider sees their own visits with their PIN. The admin sees all.',
+  adminAll: 'Administrator', adminAllHint: 'See all visits',
+  allergyFlag: 'ALLERGIES', noAllergyFlag: 'No allergies', allergyUnknownFlag: 'Unknown', openVisit: 'View',
+  patientOne: 'patient seen', patientMany: 'patients seen', todayEmpty: 'No stored visits.',
+  todayInfo: 'Stored encrypted on this tablet only; {t}.', todayExit: 'Exit', readOnly: 'Read only', backList: 'Back to list',
+  doneTextKept: "The screen was cleared. The visit is stored encrypted in \"Today's visits\" until {t}; then it is erased automatically.",
+  visitSaved: "Visit stored encrypted in \"Today's visits\" (erased: {t}).",
 });
