@@ -17,35 +17,7 @@ body{margin:0;color:var(--ink);background:#e8e2d8;min-height:100vh;overflow-x:hi
 .plate img:not([src]){visibility:hidden}
 #p-hall,#p-river{visibility:hidden}
 #p-river .box{transform-origin:50% 62%}
-/* automatic glass sliding doors (pure CSS, crisp at any resolution) */
-#doors{position:absolute;inset:0;visibility:hidden;overflow:hidden;transform-origin:50% 55%;will-change:transform;--pw:clamp(34px,8vw,150px);--fr:clamp(3px,.38vw,7px);--sheen:30%}
-#doors .door{position:absolute;top:0;bottom:0;width:calc(50% - var(--pw) + 1px);will-change:transform;
-  background:
-    linear-gradient(112deg,transparent calc(var(--sheen) - 14%),rgba(255,255,255,.16) calc(var(--sheen) - 4%),rgba(255,255,255,.05) var(--sheen),transparent calc(var(--sheen) + 2%),transparent calc(var(--sheen) + 16%),rgba(255,255,255,.09) calc(var(--sheen) + 20%),transparent calc(var(--sheen) + 26%)),
-    linear-gradient(180deg,rgba(255,255,255,.10),rgba(214,232,230,.06) 40%,rgba(190,214,212,.10));
-  box-shadow:inset 0 0 0 var(--fr) #c9ced3,inset 0 0 0 calc(var(--fr) + 1px) rgba(60,66,72,.35),inset 0 0 40px rgba(120,160,160,.10)}
-#doors .door:before{content:"";position:absolute;inset:0;pointer-events:none;
-  background:linear-gradient(90deg,#9aa1a8,#eef1f3 30%,#b7bdc3 55%,#f5f7f8 80%,#a7adb3) top/100% var(--fr) no-repeat,linear-gradient(90deg,#9aa1a8,#eef1f3 30%,#b7bdc3 55%,#f5f7f8 80%,#a7adb3) bottom/100% var(--fr) no-repeat}
-#doors .door.l{left:var(--pw)}
-#doors .door.r{right:var(--pw)}
-#doors .door.l:after,#doors .door.r:after{content:"";position:absolute;top:0;bottom:0;width:var(--fr);background:linear-gradient(90deg,#8f969d,#f3f5f7 45%,#b9bfc5)}
-#doors .door.l:after{right:0}#doors .door.r:after{left:0}
-#doors .frost{position:absolute;left:var(--fr);right:var(--fr);top:46%;height:clamp(14px,2.6vh,30px);background:rgba(255,255,255,.16);backdrop-filter:blur(5px) saturate(1.1);-webkit-backdrop-filter:blur(5px) saturate(1.1);box-shadow:0 0 0 1px rgba(255,255,255,.12)}
-#doors .handle{position:absolute;top:22%;height:56%;width:clamp(6px,.75vw,13px);border-radius:999px;
-  background:linear-gradient(90deg,#7d848b,#e9ecef 35%,#ffffff 48%,#aeb4ba 70%,#6f767d);box-shadow:3px 0 8px rgba(0,0,0,.18)}
-#doors .handle:before,#doors .handle:after{content:"";position:absolute;left:50%;width:clamp(8px,1.2vw,22px);height:clamp(4px,.55vw,9px);transform:translateX(-50%);background:linear-gradient(#e3e6e9,#9ba1a7);border-radius:2px}
-#doors .handle:before{top:7%}#doors .handle:after{bottom:7%}
-#doors .door.l .handle{right:clamp(14px,2.2vw,40px)}
-#doors .door.r .handle{left:clamp(14px,2.2vw,40px)}
-#doors .pillar{position:absolute;top:0;bottom:0;width:var(--pw);will-change:transform;
-  background:repeating-linear-gradient(90deg,#8a5a34 0,#b9834f 2px,#c9925a 30%,#a8733f 70%,#7a4d2a 100%) 0 0/clamp(9px,1.1vw,20px) 100%,#a8733f;
-  box-shadow:inset 0 0 60px rgba(40,20,5,.35)}
-#doors .pillar:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,236,205,.18),transparent 40%,rgba(0,0,0,.18))}
-#doors .pillar.l{left:0;box-shadow:inset -10px 0 24px rgba(30,15,5,.45)}
-#doors .pillar.r{right:0;box-shadow:inset 10px 0 24px rgba(30,15,5,.45)}
-#doors .door,#doors .pillar{z-index:1}#doors .pillar{z-index:2}
-#doors .header{position:absolute;left:0;right:0;top:0;height:clamp(10px,1.6vh,18px);z-index:3;background:linear-gradient(#f1f3f5,#b7bdc3 60%,#8d949b);box-shadow:0 2px 10px rgba(0,0,0,.18)}
-#doors .sensor{position:absolute;left:50%;top:100%;width:clamp(26px,2.6vw,46px);height:clamp(5px,.7vh,8px);transform:translateX(-50%);border-radius:0 0 6px 6px;background:#2b2f33}
+#bloom{position:absolute;inset:0;z-index:0;opacity:0;pointer-events:none;background:radial-gradient(60% 70% at 50% 45%,rgba(255,248,236,.95),rgba(255,244,228,.5) 55%,rgba(255,240,220,0) 100%)}
 .veil{position:absolute;inset:0;pointer-events:none;background:radial-gradient(48% 70% at 18% 52%,rgba(250,247,242,.5),rgba(250,247,242,.12) 60%,transparent 80%)}
 @media (max-width:640px){.veil{background:linear-gradient(rgba(250,247,242,.35),transparent 60%)}}
 main,header{position:relative;z-index:2}
