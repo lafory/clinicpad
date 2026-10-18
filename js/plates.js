@@ -50,7 +50,8 @@ export function initPlates({ reduced = false } = {}) {
   const el = (s) => document.querySelector(s);
   const hero = el("#p-hero"), hall = el("#p-hall"), river = el("#p-river");
   const heroBox = hero.querySelector(".box"), hallBox = hall.querySelector(".box"), riverBox = river.querySelector(".box");
-  const halfL = hero.querySelector(".half.l"), halfR = hero.querySelector(".half.r"), seam = hero.querySelector(".seam"), veil = hero.querySelector(".veil");
+  const veil = hero.querySelector(".veil"), doors = el("#doors");
+  const doorL = doors.querySelector(".door.l"), doorR = doors.querySelector(".door.r"), pillarL = doors.querySelector(".pillar.l"), pillarR = doors.querySelector(".pillar.r"), header = doors.querySelector(".header");
   const mouse = { x: 0, y: 0, tx: 0, ty: 0 };
   if (!reduced) addEventListener("pointermove", (e) => { mouse.tx = (e.clientX / innerWidth) * 2 - 1; mouse.ty = (e.clientY / innerHeight) * 2 - 1; }, { passive: true });
   const t0 = performance.now();
@@ -59,21 +60,34 @@ export function initPlates({ reduced = false } = {}) {
     if (!shot) { mouse.x += (mouse.tx - mouse.x) * 0.06; mouse.y += (mouse.ty - mouse.y) * 0.06; }
     const time = shot ? 4 : (performance.now() - t0) / 1000;
     const r = ease(S.rise), a = ease(S.approach), d = ease(S.door), e = ease(S.enter), w = S.walk, rv = ease(S.river);
-    // lobby: slow breathing zoom + mouse parallax, then push toward the glass doors (door seam ~45.4% x, 31% y)
+    // lobby: slow breathing zoom + mouse parallax; the push-in is capped (~1.15x) so the photo stays sharp,
+    // then it crossfades to the CSS glass doors (crisp at any resolution) with the hallway photo behind them
     const breathe = reduced ? 0 : Math.sin(time * 0.25) * 0.006;
-    const hs = 1.03 + breathe + r * 0.06 + a * 0.62 + d * 0.2;
-    heroBox.style.transformOrigin = `45.4% ${lerp(48, 33, sstep(0, 0.6, a))}%`;
+    const hs = Math.min(1.15, 1.03 + breathe + r * 0.04 + a * 0.08);
+    heroBox.style.transformOrigin = "45.4% 38%";
     heroBox.style.transform = `translate3d(${-mouse.x * 10 * (1 - a)}px, ${-mouse.y * 6 * (1 - a)}px, 0) scale(${hs})`;
-    // split-image doors: the two halves of the lobby slide apart at the door seam
-    halfL.style.transform = `translate3d(${-d * 62}%,0,0)`;
-    halfR.style.transform = `translate3d(${d * 62}%,0,0)`;
-    seam.style.opacity = (0.6 * sstep(0.7, 1, a) * (1 - sstep(0, 0.2, d))).toFixed(3);
     veil.style.opacity = (1 - sstep(0, 0.6, S.rise)).toFixed(3);
-    hero.style.opacity = (1 - sstep(0.75, 1, d)).toFixed(3);
-    hero.style.visibility = d >= 1 ? "hidden" : "visible";
-    // hallway behind the doors: starts slightly wide, then we walk in
-    hall.style.visibility = a > 0.3 && rv < 1 ? "visible" : "hidden";
-    const hsc = 1.02 + (1 - sstep(0, 1, d)) * 0.06 + e * 0.28 + w * 0.45;
+    const xf = sstep(0.35, 0.85, S.approach);          // lobby -> doors crossfade
+    hero.style.opacity = (1 - xf).toFixed(3);
+    hero.style.visibility = xf >= 1 ? "hidden" : "visible";
+    // automatic sliding doors: smooth quintic ease, panels slide behind the oak pillars
+    const dq = S.door < 0.5 ? 16 * S.door ** 5 : 1 - Math.pow(-2 * S.door + 2, 5) / 2;
+    const doorsOn = S.approach > 0.3 && e < 1;
+    doors.style.visibility = doorsOn ? "visible" : "hidden";
+    if (doorsOn) {
+      const push = 1.06 - 0.06 * sstep(0.35, 1, S.approach) + e * 0.12;   // gentle walk-up, then we pass through
+      doors.style.transform = `scale(${push.toFixed(4)})`;
+      const out = sstep(0.0, 1, e);
+      doorL.style.transform = `translate3d(${(-dq * 100 - out * 140).toFixed(2)}%,0,0)`;   // panels stay tucked behind the pillars
+      doorR.style.transform = `translate3d(${(dq * 100 + out * 140).toFixed(2)}%,0,0)`;
+      pillarL.style.transform = `translate3d(${(-out * 110).toFixed(2)}%,0,0)`;
+      pillarR.style.transform = `translate3d(${(out * 110).toFixed(2)}%,0,0)`;
+      header.style.transform = `translate3d(0,${(-out * 120).toFixed(2)}%,0)`;
+      doors.style.setProperty("--sheen", `${(30 + dq * 40).toFixed(1)}%`);
+    }
+    // hallway behind the doors, full-bleed and sharp (scale ~1), then we walk in
+    hall.style.visibility = S.approach > 0.3 && rv < 1 ? "visible" : "hidden";
+    const hsc = 1.0 + (1 - dq) * 0.015 + e * 0.26 + w * 0.42;
     hallBox.style.transform = `translate3d(${Math.sin(w * Math.PI * 2) * 6}px, ${w * -10}px, 0) scale(${hsc})`;
     hall.style.filter = `brightness(${(1 + e * 0.04).toFixed(3)})`;
     // river: crossfade in, gentle settle
