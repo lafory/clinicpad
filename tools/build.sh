@@ -4,6 +4,6 @@
 set -e
 cd "$(dirname "$0")/.."
 npx esbuild src/scene.src.js --bundle --format=esm --minify --target=es2020 \
-  --external:three --external:./i18n.js --external:./config.js --outfile=js/scene.js \
-  --banner:js="/* ClinicPad photoreal scene — built from src/scene.src.js (three.js addons MIT, assets CC0 Poly Haven) */"
+  --external:three --external:./i18n.js --external:./config.js --external:./plates.js --outfile=js/scene.js \
+  --banner:js="/* ClinicPad photoreal scene — built from src/scene.src.js (three.js addons MIT, photo plates from the user mockups) */"
 ls -l js/scene.js
