@@ -1,0 +1,535 @@
+/* ClinicPad V1 prototype — no backend, patient data lives ONLY in memory (state.patient / state.provider). */
+(() => {
+'use strict';
+const T = k => (I18N[state.lang][k] ?? k);
+const TL = (lang, k) => (I18N[lang][k] ?? k);
+const C = window.CATALOG;
+const cat = (group, key, lang) => (C[group][key] ? C[group][key][lang || state.lang] : key);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const qs = new URLSearchParams(location.search);
+const SETTINGS_KEY = 'clinicpad.settings.v1'; // encrypted provider config only (opt-in). Never patient data.
+
+// ---------- device detection ----------
+function detectDevice() {
+  const ua = navigator.userAgent || '';
+  const w = Math.min(screen.width || innerWidth, screen.height || innerHeight);
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  const fine = matchMedia('(pointer: fine)').matches;
+  const iPadOS = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+  if (/iPhone|iPod|Android.+Mobile|Windows Phone/i.test(ua) || (coarse && w < 600)) return 'phone';
+  if (/iPad|Tablet|Android(?!.*Mobile)|Silk|Kindle/i.test(ua) || iPadOS || (coarse && !fine)) return 'tablet';
+  return 'desktop';
+}
+
+// ---------- state ----------
+const newPatient = () => ({
+  name: '', first: '', last: '', dob: '', sex: '', address: '', city: '', state: '', zip: '', dlNo: '', phone: '', licSource: '',
+  reason: '', symptoms: [], duration: '', pain: null, body: [],
+  cond: {}, surgeryDetail: '', otherCond: '',
+  hasAllergies: null, allergies: [], allergyOther: '',
+  takesMeds: null, meds: [], medInput: '',
+  consent: false, patientSig: ''
+});
+const newProvider = () => ({
+  bpSys: '', bpDia: '', pulse: '', temp: '', pain: null,
+  pick: { findings: [], diagnosis: [], treatment: [], medicines: [] },
+  notes: { findings: '', diagnosis: '', treatment: '', medicines: '' },
+  check: {}, sig: '', pdfLang: null, spec: null
+});
+const state = {
+  lang: 'es', device: detectDevice(), reception: false, inputMode: null, screen: 'setup', config: null,
+  draft: { doctorName: '', clinic: '', clinicAddr: '', license: '', specialty: 'dental', pin: '', pin2: '', sig: '', customText: '', timeoutMin: 2, saveEnc: false },
+  patient: newPatient(), provider: newProvider(), pinBuf: '', pinTarget: 'provider', msg: null, lastActivity: Date.now(), idleCount: 0
+};
+state.reception = state.device === 'desktop';
+window.__clinicpad = state; // exposed for automated tests only
+
+const PATIENT_STEPS = ['license', 'symptoms', 'body', 'history', 'allergies', 'meds', 'consent'];
+
+// ---------- helpers ----------
+function setPath(path, value) { const parts = path.split('.'); let o = state; while (parts.length > 1) o = o[parts.shift()]; o[parts[0]] = value; }
+function getPath(path) { return path.split('.').reduce((o, k) => (o == null ? o : o[k]), state); }
+function toggle(arr, v) { const i = arr.indexOf(v); i >= 0 ? arr.splice(i, 1) : arr.push(v); }
+function toast(t, ms = 2600) { const el = document.getElementById('toast'); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (el.hidden = true), ms); }
+function go(screen) { if (state.inputMode !== 'pen') state.inputMode = null; /* re-detect on each screen; a detected stylus stays sticky for palm rejection */ state.screen = screen; state.msg = null; render(); window.scrollTo(0, 0); }
+const field = (key, path, type = 'text', attrs = '') => `<label class="f" for="${path}">${T(key)}</label><input id="${path}" type="${type}" data-bind="${path}" value="${esc(getPath(path))}" ${attrs}>`;
+const chip = (on, label, action, val, extra = '') => `<button type="button" class="chip ${on ? 'on' : ''} ${extra}" data-action="${action}" data-val="${esc(val)}" aria-pressed="${on}">${esc(label)}</button>`;
+const yn = (path, withNA) => { const v = getPath(path); return `<div class="yn" role="group">${chip(v === 'yes', T('yes'), 'setVal', 'yes', 'sm').replace('data-val', `data-path="${path}" data-val`)}${chip(v === 'no', T('no'), 'setVal', 'no').replace('data-val', `data-path="${path}" data-val`)}${withNA ? chip(v === 'na', T('notApplicable'), 'setVal', 'na').replace('data-val', `data-path="${path}" data-val`) : ''}</div>`; };
+const navBtns = (backTo, nextAction = 'next', nextLabel = T('next')) => `<div class="nav">${backTo ? `<button class="btn ghost xl" data-action="goto" data-val="${backTo}">← ${T('back')}</button>` : '<span></span>'}<button class="btn primary xl" data-action="${nextAction}" data-enter="1">${nextLabel} →</button></div>`;
+const progress = () => { const i = PATIENT_STEPS.indexOf(state.screen); return i < 0 ? '' : `<div class="progress">${PATIENT_STEPS.map((_, j) => `<i class="${j <= i ? 'on' : ''}"></i>`).join('')}</div>`; };
+const msgBox = () => state.msg ? `<div class="msg ${state.msg.type}" role="status">${esc(state.msg.text)}</div>` : '';
+const recNote = k => state.reception ? `<p class="small rec">🖥️ ${state.lang === 'es' ? 'Modo recepción: pregunte al paciente y escriba sus respuestas. Enter = siguiente.' : 'Front desk mode: ask the patient and type the answers. Enter = next.'}</p>` : '';
+const pick = s => { const [es, en] = s.split('|'); return { es, en: en || es }; };
+
+// ---------- screens ----------
+const screens = {
+  setup() {
+    const d = state.draft, editing = !!state.config;
+    return `<div class="card"><h1>${T('setupTitle')}</h1><p class="lead">${T('setupIntro')}</p>${msgBox()}
+      <div class="grid2"><div>${field('docName', 'draft.doctorName', 'text', 'autocomplete="off"')}</div><div>${field('licenseNo', 'draft.license')}</div></div>
+      <div class="grid2"><div>${field('clinicName', 'draft.clinic')}</div><div>${field('clinicAddr', 'draft.clinicAddr')}</div></div>
+      <label class="f">${T('specialty')}</label><div class="chips">${Object.keys(C.specialties).map(k => chip(d.specialty === k, cat('specialties', k), 'setVal', k).replace('data-val', 'data-path="draft.specialty" data-val')).join('')}</div>
+      <div class="grid2"><div>${field('pin', 'draft.pin', 'password', 'inputmode="numeric" maxlength="6" autocomplete="new-password"')}</div><div>${field('pin2', 'draft.pin2', 'password', 'inputmode="numeric" maxlength="6" autocomplete="new-password"')}</div></div>
+      <label class="f">${T('provSig')}</label>${sigPad('draft.sig')}
+      <label class="f" for="cq">${T('customQ')}</label><textarea id="cq" data-bind="draft.customText" placeholder="${state.lang === 'es' ? 'Ej.: ¿Paciente en ayunas?\nEj.: ¿Rayos X previos revisados?' : 'E.g.: Patient fasting?\nE.g.: Prior X-rays reviewed?'}">${esc(d.customText)}</textarea><p class="small">${T('customQHint')}</p>
+      <div class="grid2"><div>${field('timeout', 'draft.timeoutMin', 'number', 'min="1" max="30"')}</div></div>
+      <label class="check ${d.saveEnc ? 'done' : ''}" style="margin-top:16px"><input type="checkbox" data-bind="draft.saveEnc" ${d.saveEnc ? 'checked' : ''} ${crypto.subtle ? '' : 'disabled'}><span>${T('saveEnc')}${crypto.subtle ? '' : `<span class="hint flag">${state.lang === 'es' ? 'No disponible: requiere HTTPS o localhost.' : 'Unavailable: requires HTTPS or localhost.'}</span>`}</span></label>
+      <div class="nav">${editing ? `<button class="btn ghost xl" data-action="goto" data-val="start">${T('cancel')}</button>` : '<span></span>'}<button class="btn primary xl" data-action="saveSetup" data-enter="1">${T('startUsing')} →</button></div></div>`;
+  },
+  unlock() {
+    return `<div class="card center"><h1>${T('unlockTitle')}</h1><p class="lead">${T('unlockIntro')}</p>${msgBox()}${pinPad()}
+      <div class="row" style="justify-content:center"><button class="btn danger" data-action="forgetSettings">${T('forget')}</button></div></div>`;
+  },
+  start() {
+    const devLbl = { phone: state.lang === 'es' ? 'Teléfono' : 'Phone', tablet: 'Tablet', desktop: state.lang === 'es' ? 'Computadora' : 'Desktop' }[state.device];
+    return `<div class="card hero"><div class="small">${esc(state.config.clinic)} · ${esc(state.config.doctorName)}</div>
+      <div class="big">${T('startPrompt')}</div>${recNote()}${state.device === 'phone' ? `<p class="msg warn phone-note">📱 ${state.lang === 'es' ? 'Está usando un teléfono. Funciona, pero para firmar y para la pantalla del proveedor recomendamos una tablet o computadora.' : 'You are on a phone. It works, but a tablet or computer is recommended for signing and the provider screen.'}</p>` : ''}
+      <input id="startName" type="text" data-bind="patient.name" value="${esc(state.patient.name)}" placeholder="${T('namePh')}" autocomplete="off" autofocus aria-label="${T('startPrompt')}">
+      ${msgBox()}<button class="btn primary xl" data-action="begin" data-enter="1">${T('begin')} →</button>
+      <div class="row" style="justify-content:center;margin-top:28px">
+        <span class="tag" id="deviceTag">${state.lang === 'es' ? 'Dispositivo' : 'Device'}: ${devLbl}</span>
+        <label class="check" style="margin:0;min-height:52px"><input type="checkbox" id="recToggle" data-bind="reception" ${state.reception ? 'checked' : ''}><span>${state.lang === 'es' ? 'Modo recepción (el personal escribe)' : 'Front desk mode (staff types)'}</span></label>
+        <button class="btn ghost" data-action="settings">⚙️ ${T('staffSettings')}</button></div></div>`;
+  },
+  license() {
+    const p = state.patient;
+    return `${progress()}<div class="card"><h2>${T('licTitle')}</h2><p class="lead">${T('licIntro')}</p>${recNote()}
+      <div class="row"><span class="btn primary filebtn">📷 ${state.reception ? (state.lang === 'es' ? 'Subir foto/escaneo del reverso' : 'Upload photo/scan of the back') : T('licTake')}<input type="file" id="licFile" accept="image/*" ${state.device === 'desktop' ? '' : 'capture="environment"'} aria-label="${T('licTake')}"></span>
+      <span class="small">PDF417 · AAMVA</span></div>
+      <div id="licStatus">${msgBox()}</div>
+      <div class="grid2"><div>${field('firstName', 'patient.first')}</div><div>${field('lastName', 'patient.last')}</div></div>
+      <div class="grid3"><div>${field('dob', 'patient.dob', 'date')}</div><div><label class="f" for="patient.sex">${T('sex')}</label><select id="patient.sex" data-bind="patient.sex"><option value=""></option>${Object.keys(C.sex).map(k => `<option value="${k}" ${p.sex === k ? 'selected' : ''}>${cat('sex', k)}</option>`).join('')}</select></div><div>${field('phone', 'patient.phone', 'tel')}</div></div>
+      ${field('address', 'patient.address')}
+      <div class="grid3"><div>${field('city', 'patient.city')}</div><div>${field('state', 'patient.state', 'text', 'maxlength="2"')}</div><div>${field('zip', 'patient.zip', 'text', 'inputmode="numeric"')}</div></div>
+      ${field('dlNo', 'patient.dlNo')}
+      ${navBtns('start')}</div>`;
+  },
+  symptoms() {
+    const p = state.patient;
+    return `${progress()}<div class="card"><h2>${T('symTitle')}</h2>${recNote()}
+      <label class="f" for="reason">${T('reason')}</label><textarea id="reason" data-bind="patient.reason">${esc(p.reason)}</textarea>
+      <label class="f">${T('symptoms')}</label><div class="chips">${Object.keys(C.symptoms).map(k => chip(p.symptoms.includes(k), cat('symptoms', k), 'toggleArr', k).replace('data-val', 'data-path="patient.symptoms" data-val')).join('')}</div>
+      <label class="f">${T('duration')}</label><div class="chips">${Object.keys(C.duration).map(k => chip(p.duration === k, cat('duration', k), 'setVal', k).replace('data-val', 'data-path="patient.duration" data-val')).join('')}</div>
+      <label class="f">${T('painScale')}</label>${painScale('patient.pain')}
+      ${navBtns('license')}</div>`;
+  },
+  body() {
+    const sel = state.patient.body;
+    return `${progress()}<div class="card"><h2>${T('bodyTitle')}</h2><p class="lead">${T('bodyIntro')}</p>
+      <div class="bodywrap">${bodySvg('f')}${bodySvg('b')}</div>
+      <p><b>${T('selected')}:</b> <span id="bodySel">${sel.length ? sel.map(k => `<span class="tag red">${esc(cat('body', k))}</span>`).join(' ') : T('none')}</span></p>
+      ${navBtns('symptoms')}</div>`;
+  },
+  history() {
+    const p = state.patient;
+    const rows = Object.keys(C.conditions).map(k => `<div class="qrow"><span class="q">${cat('conditions', k)}</span>${yn('patient.cond.' + k, k === 'pregnant')}</div>
+      ${k === 'surgery' && p.cond.surgery === 'yes' ? `<input type="text" data-bind="patient.surgeryDetail" value="${esc(p.surgeryDetail)}" placeholder="${T('recentSurgeryDetail')}" aria-label="${T('recentSurgeryDetail')}">` : ''}`).join('');
+    return `${progress()}<div class="card"><h2>${T('histTitle')}</h2><p class="lead">${T('histIntro')}</p>${recNote()}${rows}
+      <label class="f" for="oc">${T('otherConditions')}</label><input id="oc" type="text" data-bind="patient.otherCond" value="${esc(p.otherCond)}">
+      ${navBtns('body')}</div>`;
+  },
+  allergies() {
+    const p = state.patient;
+    return `${progress()}<div class="card"><h2>${T('allTitle')}</h2>${recNote()}${msgBox()}
+      <div class="qrow"><span class="q">${T('hasAllergies')}</span>${yn('patient.hasAllergies')}</div>
+      ${p.hasAllergies === 'yes' ? `<label class="f">${T('allergyList')}</label><div class="chips">${Object.keys(C.allergies).map(k => chip(p.allergies.includes(k), cat('allergies', k), 'toggleArr', k, 'danger').replace('data-val', 'data-path="patient.allergies" data-val')).join('')}</div>
+      <label class="f" for="ao">${T('allergyOther')}</label><input id="ao" type="text" data-bind="patient.allergyOther" value="${esc(p.allergyOther)}">` : ''}
+      ${navBtns('history')}</div>`;
+  },
+  meds() {
+    const p = state.patient;
+    return `${progress()}<div class="card"><h2>${T('medTitle')}</h2><p class="lead">${T('medIntro')}</p>${recNote()}
+      <div class="qrow"><span class="q">${T('takesMeds')}</span>${yn('patient.takesMeds')}</div>
+      ${p.takesMeds === 'yes' ? `<div class="row" style="margin-top:12px"><input id="medInput" type="text" data-bind="patient.medInput" value="${esc(p.medInput)}" placeholder="${T('medPh')}" style="flex:1" data-enter-action="addMed"><button class="btn primary" data-action="addMed">+ ${T('add')}</button></div>
+      <div class="chips" style="margin-top:12px">${p.meds.map((m, i) => `<button class="chip on" data-action="removeMed" data-val="${i}">${esc(m)} ✕</button>`).join('')}</div>` : ''}
+      ${navBtns('allergies')}</div>`;
+  },
+  consent() {
+    const p = state.patient;
+    return `${progress()}<div class="card"><h2>${T('consTitle')}</h2>${msgBox()}<p style="font-size:20px">${T('consText')}</p>
+      <label class="check ${p.consent ? 'done' : ''}"><input type="checkbox" data-bind="patient.consent" ${p.consent ? 'checked' : ''}><span><b>${T('consCheck')}</b></span></label>
+      <label class="f">${T('patSig')} — ${esc(p.name)}</label>${sigPad('patient.patientSig')}
+      ${state.reception ? `<p class="small">${state.lang === 'es' ? 'El paciente puede firmar con el mouse/trackpad, o entréguele una tablet.' : 'The patient can sign with the mouse/trackpad, or hand them a tablet.'}</p>` : ''}
+      ${navBtns('meds', 'finishPatient', T('finish'))}</div>`;
+  },
+  handoff() {
+    return `<div class="card hero"><div style="font-size:64px">✅</div><div class="big">${T('handTitle')}</div><p class="lead" style="font-size:22px">${T('handText')}</p>
+      <button class="btn primary xl" data-action="staffAccess" data-enter="1">🔒 ${T('staffAccess')}</button></div>`;
+  },
+  pin() {
+    return `<div class="card center"><h1>${T('pinTitle')}</h1><p class="lead">${T('pinEnter')}</p>${msgBox()}${pinPad()}
+      <button class="btn ghost" data-action="pinCancel">${T('pinBack')}</button></div>`;
+  },
+  provider() {
+    const p = state.patient, v = state.provider, cfg = state.config;
+    const spec = v.spec || cfg.specialty;
+    const yesList = Object.keys(C.conditions).filter(k => p.cond[k] === 'yes');
+    const sections = ['findings', 'diagnosis', 'treatment', 'medicines'].map(sec => `<h3>${T(sec)}</h3>
+      <div class="chips">${C.quick[spec][sec].map(s => { const o = pick(s); return chip(v.pick[sec].includes(s), o[state.lang], 'togglePick', s).replace('data-val', `data-sec="${sec}" data-val`); }).join('')}</div>
+      <textarea data-bind="provider.notes.${sec}" placeholder="${T('freeText')}" aria-label="${T(sec)} — ${T('freeText')}" style="margin-top:10px;min-height:70px">${esc(v.notes[sec])}</textarea>`).join('');
+    const items = checklistItems();
+    const left = items.filter(i => !v.check[i.key]).length;
+    const ready = left === 0 && !!v.sig;
+    const lang = v.pdfLang || state.lang;
+    return `<div class="card summary"><div class="row between"><h2>${T('patientSummary')}</h2><span class="tag">${esc(cfg.doctorName)} · ${cat('specialties', spec)}</span></div>
+      <dl><dt>${T('namePh')}</dt><dd><b>${esc(fullName())}</b></dd>
+      <dt>${T('dob')}</dt><dd>${esc(p.dob) || '—'} ${p.licSource ? `<span class="tag">${state.lang === 'es' ? 'leído de licencia' : 'read from license'}</span>` : ''}</dd>
+      <dt>${T('reason')}</dt><dd>${esc(p.reason) || '—'}</dd>
+      <dt>${T('symptoms')}</dt><dd>${p.symptoms.map(k => cat('symptoms', k)).join(', ') || '—'} ${p.duration ? '· ' + cat('duration', p.duration) : ''}</dd>
+      <dt>${T('painScale').split('(')[0]}</dt><dd>${p.pain ?? '—'}/10</dd>
+      <dt>${T('bodyTitle')}</dt><dd>${p.body.map(k => cat('body', k)).join(', ') || '—'}</dd>
+      <dt>${T('histTitle')}</dt><dd>${yesList.length ? yesList.map(k => `<span class="tag red">${cat('conditions', k)}</span>`).join(' ') : '—'} ${p.surgeryDetail ? '· ' + esc(p.surgeryDetail) : ''} ${p.otherCond ? '· ' + esc(p.otherCond) : ''}</dd>
+      <dt>${T('medTitle')}</dt><dd>${p.takesMeds === 'no' ? T('no') : (p.meds.map(esc).join(', ') || '—')}</dd>
+      <dt>${T('consTitle')}</dt><dd>${p.consent && p.patientSig ? '✅ ' + (state.lang === 'es' ? 'Firmado' : 'Signed') : '<span class="flag">⚠</span>'}</dd></dl></div>
+      <div class="card"><h2>${T('vitals')}</h2><div class="grid3">
+        <div><label class="f">${T('bp')}</label><div class="row" style="flex-wrap:nowrap"><input type="number" data-bind="provider.bpSys" value="${esc(v.bpSys)}" placeholder="120" aria-label="Sys"> / <input type="number" data-bind="provider.bpDia" value="${esc(v.bpDia)}" placeholder="80" aria-label="Dia"></div></div>
+        <div>${field('pulse', 'provider.pulse', 'number')}</div><div>${field('temp', 'provider.temp', 'number', 'step="0.1"')}</div></div>
+        <label class="f">${T('painScale')}</label>${painScale('provider.pain')}</div>
+      <div class="card"><div class="row between"><h2>${state.lang === 'es' ? 'Evaluación y plan' : 'Assessment and plan'}</h2>
+        <div class="tabs"><span class="small">${T('quickFor')}</span>${Object.keys(C.specialties).map(k => chip(spec === k, cat('specialties', k), 'setVal', k).replace('data-val', 'data-path="provider.spec" data-val')).join('')}</div></div>${sections}</div>
+      <div class="card" id="checklistCard"><h2>${T('checklist')}</h2>
+        ${items.map(i => `<label class="check ${v.check[i.key] ? 'done' : ''}"><input type="checkbox" data-bind="provider.check.${i.key}" data-rerender="1" ${v.check[i.key] ? 'checked' : ''}><span>${esc(i.label)}${i.hint ? `<span class="hint ${i.flag ? 'flag' : ''}">${esc(i.hint)}</span>` : ''}</span></label>`).join('')}
+        <h3>${T('provSigTitle')}</h3>${cfg.sig ? `<button class="btn ghost" data-action="useSavedSig" style="margin-bottom:10px">✍️ ${T('useSaved')}</button>` : ''}${sigPad('provider.sig')}
+        <div id="lockbar" class="lockbar ${ready ? 'open' : 'locked'}">${ready ? '🔓 ' + T('clUnlocked') : '🔒 ' + T('clLocked').replace('{n}', left) + (v.sig ? '' : ' · ' + T('sigMissing'))}</div>
+        <label class="f">${T('pdfLang')}</label><div class="chips">${chip(lang === 'es', 'Español', 'setVal', 'es').replace('data-val', 'data-path="provider.pdfLang" data-val')}${chip(lang === 'en', 'English', 'setVal', 'en').replace('data-val', 'data-path="provider.pdfLang" data-val')}</div>
+        <div class="nav"><button class="btn danger" data-action="cancelVisit">🗑️ ${T('cancelVisit')}</button>
+          <div class="row"><button class="btn ghost xl" id="printBtn" data-action="printPdf" ${ready ? '' : 'disabled'}>${ready ? '' : '<span class="lock">🔒</span>'}🖨️ ${T('printPdf')}</button>
+          <button class="btn primary xl" id="exportBtn" data-action="exportPdf" ${ready ? '' : 'disabled'}>${ready ? '' : '<span class="lock">🔒</span>'}📄 ${T('exportPdf')}</button></div></div></div>`;
+  },
+  done() {
+    return `<div class="card hero"><div style="font-size:64px">🧾</div><div class="big">${T('doneTitle')}</div><p class="lead" style="font-size:20px">${T('doneText')}</p>
+      <button class="btn primary xl" data-action="nextPatient" data-enter="1">${T('nextPatient')} →</button></div>`;
+  }
+};
+
+// ---------- components ----------
+function painScale(path) {
+  const v = getPath(path);
+  const col = n => `hsl(${120 - n * 12},70%,${n > 6 ? 42 : 40}%)`;
+  return `<div class="pain" role="radiogroup">${Array.from({ length: 11 }, (_, n) => `<button type="button" class="${v === n ? 'on' : ''}" style="${v === n ? `background:${col(n)}` : ''}" data-action="setPain" data-path="${path}" data-val="${n}" aria-pressed="${v === n}">${n}</button>`).join('')}</div><div class="painlbl"><span>${T('painNone')}</span><span>${T('painWorst')}</span></div>`;
+}
+function sigPad(path) { return `<div class="sigmode" data-mode="${state.inputMode || 'none'}" aria-live="polite">${modeText()}</div><div class="sigwrap"><canvas data-sig="${path}" aria-label="signature"></canvas><div class="sigx"></div></div><div class="row end" style="margin-top:6px"><button class="btn ghost" data-action="clearSig" data-val="${path}">${T('clear')}</button></div>`; }
+function pinPad() {
+  const n = state.pinBuf.length;
+  return `<div class="pindots">${Array.from({ length: Math.max(4, n) }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</div>
+  <div class="pinpad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(d => `<button data-action="pinDigit" data-val="${d}">${d}</button>`).join('')}<button data-action="pinDel" aria-label="delete">⌫</button><button data-action="pinDigit" data-val="0">0</button><button data-action="pinOk" style="background:var(--teal);color:#fff">OK</button></div>
+  <p class="small">${state.lang === 'es' ? 'También puede escribir el PIN con el teclado y presionar Enter.' : 'You can also type the PIN on the keyboard and press Enter.'}</p>`;
+}
+function bodySvg(side) {
+  const sel = state.patient.body;
+  const R = (id, shape) => shape.replace('<x ', `<${shape.startsWith('<x c') ? '' : ''}`).replace(/^<(\w+)/, `<$1 class="rg ${sel.includes(id) ? 'on' : ''}" data-action="toggleBody" data-val="${id}" tabindex="0" role="button" aria-label="${esc(cat('body', id))}"`);
+  const S = s => s.replace(/^<(\w+)/, '<$1 class="static"');
+  let g;
+  if (side === 'f') g = [R('f_head', '<ellipse cx="100" cy="34" rx="24" ry="26"/>'), R('f_jaw', '<rect x="84" y="52" width="32" height="16" rx="7"/>'), R('f_neck', '<rect x="89" y="70" width="22" height="16" rx="4"/>'),
+    R('f_shR', '<circle cx="62" cy="98" r="16"/>'), R('f_shL', '<circle cx="138" cy="98" r="16"/>'), R('f_chest', '<rect x="72" y="88" width="56" height="52" rx="8"/>'), R('f_abd', '<rect x="74" y="141" width="52" height="48" rx="8"/>'),
+    R('f_armR', '<rect x="40" y="114" width="20" height="88" rx="9"/>'), R('f_armL', '<rect x="140" y="114" width="20" height="88" rx="9"/>'), R('f_handR', '<ellipse cx="50" cy="216" rx="12" ry="15"/>'), R('f_handL', '<ellipse cx="150" cy="216" rx="12" ry="15"/>'),
+    R('f_hipR', '<rect x="72" y="190" width="27" height="30" rx="6"/>'), R('f_hipL', '<rect x="101" y="190" width="27" height="30" rx="6"/>'), S('<rect x="74" y="221" width="24" height="64" rx="8"/>'), S('<rect x="102" y="221" width="24" height="64" rx="8"/>'),
+    R('f_kneeR', '<circle cx="86" cy="298" r="14"/>'), R('f_kneeL', '<circle cx="114" cy="298" r="14"/>'), S('<rect x="77" y="313" width="18" height="60" rx="8"/>'), S('<rect x="105" y="313" width="18" height="60" rx="8"/>'),
+    R('f_footR', '<ellipse cx="85" cy="386" rx="15" ry="10"/>'), R('f_footL', '<ellipse cx="115" cy="386" rx="15" ry="10"/>'), '<text x="30" y="70" font-size="14" fill="#64748b">D</text><text x="162" y="70" font-size="14" fill="#64748b">I</text>'];
+  else g = [R('b_head', '<ellipse cx="100" cy="34" rx="24" ry="26"/>'), R('b_neck', '<rect x="88" y="62" width="24" height="24" rx="5"/>'), S('<circle cx="62" cy="98" r="16"/>'), S('<circle cx="138" cy="98" r="16"/>'),
+    R('b_upper', '<rect x="72" y="88" width="56" height="60" rx="8"/>'), R('b_lower', '<rect x="74" y="149" width="52" height="40" rx="8"/>'), R('b_glute', '<rect x="72" y="190" width="56" height="32" rx="10"/>'),
+    S('<rect x="40" y="114" width="20" height="88" rx="9"/>'), S('<rect x="140" y="114" width="20" height="88" rx="9"/>'), S('<ellipse cx="50" cy="216" rx="12" ry="15"/>'), S('<ellipse cx="150" cy="216" rx="12" ry="15"/>'),
+    R('b_thighL', '<rect x="74" y="223" width="24" height="76" rx="8"/>'), R('b_thighR', '<rect x="102" y="223" width="24" height="76" rx="8"/>'), R('b_calfL', '<rect x="76" y="302" width="20" height="72" rx="9"/>'), R('b_calfR', '<rect x="104" y="302" width="20" height="72" rx="9"/>'),
+    S('<ellipse cx="85" cy="386" rx="15" ry="10"/>'), S('<ellipse cx="115" cy="386" rx="15" ry="10"/>'), '<text x="30" y="70" font-size="14" fill="#64748b">I</text><text x="162" y="70" font-size="14" fill="#64748b">D</text>'];
+  return `<div class="bodyfig"><div class="lbl">${side === 'f' ? T('front') : T('backView')}</div><svg viewBox="0 0 200 405" role="group" aria-label="${side === 'f' ? T('front') : T('backView')}">${g.join('')}</svg></div>`;
+}
+function fullName() { const p = state.patient; return [p.first, p.last].filter(Boolean).join(' ') || p.name; }
+function allergyLabels(lang) { const p = state.patient; return p.allergies.map(k => cat('allergies', k, lang)).concat(p.allergyOther ? [p.allergyOther] : []); }
+function checklistItems() {
+  const p = state.patient, cl = k => cat('checklist', k), pt = state.lang === 'es' ? 'Paciente: ' : 'Patient: ';
+  const ans = k => p.cond[k] ? pt + (p.cond[k] === 'yes' ? T('yes') : p.cond[k] === 'no' ? T('no') : T('notApplicable')) : (state.lang === 'es' ? 'Sin respuesta del paciente' : 'Not answered by patient');
+  const has = k => p.allergies.includes(k);
+  const v = state.provider;
+  const items = [
+    { key: 'allergyMed', label: cl('allergyMed'), hint: p.hasAllergies === 'yes' ? pt + (allergyLabels().join(', ') || T('yes')) : p.hasAllergies === 'no' ? pt + T('no') : T('allergyUnknown'), flag: p.hasAllergies !== 'no' },
+    { key: 'allergyLatex', label: cl('allergyLatex'), hint: has('latex') ? pt + (state.lang === 'es' ? 'ALÉRGICO AL LÁTEX' : 'LATEX ALLERGY') : '', flag: has('latex') },
+    { key: 'allergyAnesth', label: cl('allergyAnesth'), hint: has('anesthesia') || has('genAnesth') ? pt + allergyLabels().filter((_, i) => ['anesthesia', 'genAnesth'].includes(p.allergies[i])).join(', ') : '', flag: has('anesthesia') || has('genAnesth') },
+    { key: 'meds', label: cl('meds'), hint: p.takesMeds === 'yes' ? pt + (p.meds.join(', ') || T('yes')) : p.takesMeds === 'no' ? pt + T('no') : '' },
+    { key: 'diabetes', label: cl('diabetes'), hint: ans('diabetes'), flag: p.cond.diabetes === 'yes' },
+    { key: 'bp', label: cl('bp'), hint: (v.bpSys && v.bpDia ? `${v.bpSys}/${v.bpDia} mmHg · ` : (state.lang === 'es' ? 'PA no registrada · ' : 'BP not recorded · ')) + ans('hbp'), flag: p.cond.hbp === 'yes' || !(v.bpSys && v.bpDia) },
+    { key: 'heart', label: cl('heart'), hint: ans('heart'), flag: p.cond.heart === 'yes' },
+    { key: 'pregnancy', label: cl('pregnancy'), hint: ans('pregnant'), flag: p.cond.pregnant === 'yes' },
+    { key: 'surgery', label: cl('surgery'), hint: ans('surgery') + (p.surgeryDetail ? ' · ' + p.surgeryDetail : ''), flag: p.cond.surgery === 'yes' },
+    { key: 'thinners', label: cl('thinners'), hint: ans('thinners'), flag: p.cond.thinners === 'yes' },
+    { key: 'pain', label: cl('pain'), hint: (v.pain ?? p.pain) != null ? `${v.pain ?? p.pain}/10` : (state.lang === 'es' ? 'Sin registrar' : 'Not recorded'), flag: (v.pain ?? p.pain) == null },
+    { key: 'explained', label: cl('explained') }
+  ];
+  (state.config.custom || []).forEach((q, i) => items.push({ key: 'c' + i, label: '★ ' + q }));
+  return items;
+}
+
+// ---------- signature pads (pen vs finger vs mouse) ----------
+// state.inputMode: null until the first stroke, then 'pen' | 'finger' | 'mouse' (device property, memory only).
+// Pen mode: touch pointers are rejected (palm/finger), width follows pressure. Finger mode: thicker line.
+const MODE_TXT = { es: { none: 'Firme con el lápiz, el dedo o el mouse', pen: '✒️ Lápiz detectado', finger: '☝️ Usando el dedo', mouse: '🖱️ Usando el mouse' }, en: { none: 'Sign with a stylus, finger or mouse', pen: '✒️ Stylus detected', finger: '☝️ Using finger', mouse: '🖱️ Using mouse' } };
+function modeText() { return MODE_TXT[state.lang][state.inputMode || 'none']; }
+function updateModeTags() { document.querySelectorAll('.sigmode').forEach(t => { t.textContent = modeText(); t.dataset.mode = state.inputMode || 'none'; }); document.body.dataset.input = state.inputMode || 'none'; }
+function strokeWidth(e) {
+  if (state.inputMode === 'pen') { const pr = e.pressure > 0 ? e.pressure : 0.5; return 0.8 + pr * 4.2; }
+  if (state.inputMode === 'finger') return 5;
+  return 2.6;
+}
+function initSigPads() {
+  updateModeTags();
+  document.querySelectorAll('canvas[data-sig]').forEach(cv => {
+    const path = cv.dataset.sig, ctx = cv.getContext('2d'), dpr = window.devicePixelRatio || 1;
+    const rect = cv.getBoundingClientRect(); cv.width = rect.width * dpr; cv.height = rect.height * dpr; ctx.scale(dpr, dpr);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#0f172a';
+    const existing = getPath(path);
+    if (existing) { const im = new Image(); im.onload = () => ctx.drawImage(im, 0, 0, rect.width, rect.height); im.src = existing; }
+    let active = null, last = null, dirty = false; cv.__rejected = 0;
+    const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+    cv.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      const t = e.pointerType === 'pen' ? 'pen' : e.pointerType === 'touch' ? 'finger' : 'mouse';
+      if (state.inputMode === 'pen' && t === 'finger') { cv.__rejected++; return; } // palm / finger rejection
+      if (active !== null) return; // one stroke at a time (ignore extra contacts)
+      if (state.inputMode !== t && (state.inputMode !== 'pen' || t === 'pen')) { state.inputMode = t; updateModeTags(); } // first stroke decides; a pen always upgrades
+      active = e.pointerId; last = pos(e); try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+    cv.addEventListener('pointermove', e => {
+      if (e.pointerId !== active) return; e.preventDefault();
+      const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : []; (evs.length ? evs : [e]).forEach(ev => {
+        const p = pos(ev); ctx.lineWidth = strokeWidth(ev); ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke(); last = p; dirty = true; });
+    });
+    const end = e => { if (e.pointerId !== active) return; active = null; if (dirty) { setPath(path, cv.toDataURL('image/png')); if (path === 'provider.sig') refreshLock(); } };
+    cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+  });
+}
+function refreshLock() { if (state.screen !== 'provider') return; const y = scrollY; render(); scrollTo(0, y); }
+
+// ---------- license (PDF417 / AAMVA) ----------
+function parseAAMVA(raw) {
+  const txt = raw.replace(/\r/g, '\n');
+  const get = code => { const m = txt.match(new RegExp('(?:^|\\n|DL|ID)' + code + '([^\\n]*)')); return m ? m[1].trim() : ''; };
+  let first = get('DAC'), middle = get('DAD'), last = get('DCS');
+  if (!first && get('DCT')) { const parts = get('DCT').split(/[ ,]+/); first = parts[0]; middle = parts.slice(1).join(' '); }
+  if (!last && get('DAB')) last = get('DAB');
+  if (!first && !last && get('DAA')) { const parts = get('DAA').split(/[,$]/); last = parts[0]; first = parts[1] || ''; }
+  const dobRaw = get('DBB'); let dob = '';
+  if (/^\d{8}$/.test(dobRaw)) dob = /^(19|20)/.test(dobRaw) && !/^(0[1-9]|1[0-2])/.test(dobRaw) ? `${dobRaw.slice(0, 4)}-${dobRaw.slice(4, 6)}-${dobRaw.slice(6)}` : `${dobRaw.slice(4)}-${dobRaw.slice(0, 2)}-${dobRaw.slice(2, 4)}`;
+  const sexRaw = get('DBC'); const sex = sexRaw === '1' || /^M/i.test(sexRaw) ? 'M' : sexRaw === '2' || /^F/i.test(sexRaw) ? 'F' : sexRaw ? 'X' : '';
+  const zip = get('DAK').replace(/[^0-9]/g, '').slice(0, 5);
+  const title = s => s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  return { first: title(first), last: title(last), middle, dob, sex, address: title(get('DAG')), city: title(get('DAI')), state: get('DAJ').toUpperCase().slice(0, 2), zip, dlNo: get('DAQ') };
+}
+async function decodeLicenseFile(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    if ('BarcodeDetector' in window) {
+      try { const fm = await BarcodeDetector.getSupportedFormats(); if (fm.includes('pdf417')) { const r = await new BarcodeDetector({ formats: ['pdf417'] }).detect(img); if (r[0]?.rawValue) return { text: r[0].rawValue, engine: 'BarcodeDetector' }; } } catch (e) { /* fall through */ }
+    }
+    const hints = new Map(); hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.PDF_417]); hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+    const reader = new ZXing.PDF417Reader();
+    for (const maxW of [1600, 2400, 1000, img.naturalWidth]) for (const rot of [0, 90, 270]) {
+      const sc = Math.min(1, maxW / img.naturalWidth), w = Math.round(img.naturalWidth * sc), h = Math.round(img.naturalHeight * sc);
+      const cv = document.createElement('canvas'); const swap = rot % 180 !== 0; cv.width = swap ? h : w; cv.height = swap ? w : h;
+      const ctx = cv.getContext('2d'); ctx.translate(cv.width / 2, cv.height / 2); ctx.rotate(rot * Math.PI / 180); ctx.drawImage(img, -w / 2, -h / 2, w, h);
+      try { const lum = new ZXing.HTMLCanvasElementLuminanceSource(cv); const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum)); const r = reader.decode(bmp, hints); if (r?.getText()) return { text: r.getText(), engine: 'ZXing' }; } catch (e) { /* try next */ }
+      cv.width = cv.height = 0;
+    }
+    return null;
+  } finally { URL.revokeObjectURL(url); }
+}
+async function onLicenseFile(input) {
+  const file = input.files && input.files[0]; if (!file) return;
+  state.msg = { type: 'info', text: T('licReading') }; document.getElementById('licStatus').innerHTML = msgBox();
+  let res = null; try { res = await decodeLicenseFile(file); } catch (e) { res = null; }
+  input.value = ''; // the photo is never kept
+  if (res) {
+    const d = parseAAMVA(res.text); const p = state.patient;
+    ['first', 'last', 'dob', 'sex', 'address', 'city', 'state', 'zip', 'dlNo'].forEach(k => { if (d[k]) p[k] = d[k]; });
+    p.licSource = res.engine; state.msg = { type: 'ok', text: T('licOk') + ` (${res.engine})` };
+  } else state.msg = { type: 'err', text: T('licFail') };
+  const m = state.msg; render(); state.msg = m; document.getElementById('licStatus').innerHTML = msgBox();
+}
+
+// ---------- encrypted settings (provider config only) ----------
+const enc = new TextEncoder(), dec = new TextDecoder();
+const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf))), unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function keyFromPin(pin, salt) { const base = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveKey']); return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 150000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']); }
+async function saveSettings(cfg) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await keyFromPin(cfg.pin, salt); const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify(cfg)));
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify({ v: 1, salt: b64(salt), iv: b64(iv), ct: b64(ct) }));
+}
+async function loadSettings(pin) {
+  const o = JSON.parse(localStorage.getItem(SETTINGS_KEY)); const key = await keyFromPin(pin, unb64(o.salt));
+  return JSON.parse(dec.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(o.iv) }, key, unb64(o.ct))));
+}
+
+// ---------- PDF ----------
+function buildPdf(lang) {
+  const { jsPDF } = window.jspdf; const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const p = state.patient, v = state.provider, cfg = state.config, L2 = k => TL(lang, k);
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 46; let y = M;
+  const ensure = h => { if (y + h > H - 60) { footer(); doc.addPage(); y = M; } };
+  const footer = () => { doc.setFontSize(8); doc.setTextColor(100); doc.text(doc.splitTextToSize(L2('footer'), W - 2 * M), M, H - 34); doc.setTextColor(0); };
+  const h2 = t => { ensure(30); y += 8; doc.setFillColor(240, 253, 250); doc.rect(M, y - 12, W - 2 * M, 20, 'F'); doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(15, 118, 110); doc.text(t, M + 6, y + 2); doc.setTextColor(0); y += 18; };
+  const line = (label, val, opts = {}) => { doc.setFontSize(10.5); doc.setFont('helvetica', 'bold'); const lw = 175; const ll = doc.splitTextToSize(String(label), lw - 10); doc.setFont('helvetica', 'normal'); const lines = doc.splitTextToSize(String(val || '—'), W - 2 * M - lw); const n = Math.max(ll.length, lines.length); ensure(n * 13 + 4); doc.setFont('helvetica', 'bold'); doc.text(ll, M, y); doc.setFont('helvetica', 'normal'); if (opts.red) doc.setTextColor(185, 28, 28); doc.text(lines, M + lw, y); doc.setTextColor(0); y += n * 13 + 3; };
+  const yn = k => p.cond[k] === 'yes' ? L2('yes') : p.cond[k] === 'no' ? L2('no') : p.cond[k] === 'na' ? L2('notApplicable') : '—';
+  // header
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.text(cfg.clinic || 'Clinic', M, y); y += 18;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text([cfg.clinicAddr, `${cfg.doctorName} · ${lang === 'es' ? 'Licencia' : 'License'}: ${cfg.license}`].filter(Boolean), M, y); y += cfg.clinicAddr ? 26 : 14;
+  const now = new Date(); doc.text(now.toLocaleString(lang === 'es' ? 'es-US' : 'en-US'), W - M, M, { align: 'right' });
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.text(lang === 'es' ? 'Registro de visita del paciente' : 'Patient visit record', W - M, M + 18, { align: 'right' });
+  doc.setDrawColor(15, 118, 110); doc.setLineWidth(1.5); doc.line(M, y, W - M, y); y += 16;
+  // allergies box
+  const al = allergyLabels(lang); const alTxt = p.hasAllergies === 'yes' ? `${L2('allergyBanner')}: ${al.join(', ') || L2('yes')}` : p.hasAllergies === 'no' ? L2('noAllergies') : L2('allergyUnknown');
+  doc.setFillColor(...(p.hasAllergies === 'no' ? [220, 252, 231] : [254, 226, 226])); doc.setDrawColor(...(p.hasAllergies === 'no' ? [22, 163, 74] : [220, 38, 38]));
+  const alLines = doc.splitTextToSize(alTxt, W - 2 * M - 20); doc.roundedRect(M, y, W - 2 * M, alLines.length * 15 + 14, 4, 4, 'FD');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...(p.hasAllergies === 'no' ? [21, 128, 61] : [153, 27, 27])); doc.text(alLines, M + 10, y + 18); doc.setTextColor(0); y += alLines.length * 15 + 24;
+  h2(lang === 'es' ? 'Datos del paciente' : 'Patient information');
+  line(lang === 'es' ? 'Nombre' : 'Name', fullName()); line(L2('dob'), p.dob); line(L2('sex'), p.sex ? cat('sex', p.sex, lang) : '');
+  line(L2('address'), [p.address, p.city, p.state, p.zip].filter(Boolean).join(', ')); line(L2('phone'), p.phone); line(L2('dlNo'), p.dlNo + (p.licSource ? (lang === 'es' ? '  (leído de la licencia)' : '  (read from license)') : ''));
+  h2(lang === 'es' ? 'Motivo y síntomas' : 'Reason and symptoms');
+  line(L2('reason'), p.reason); line(L2('symptoms'), p.symptoms.map(k => cat('symptoms', k, lang)).join(', ')); line(L2('duration'), p.duration ? cat('duration', p.duration, lang) : '');
+  line(lang === 'es' ? 'Dolor (paciente)' : 'Pain (patient)', p.pain != null ? p.pain + '/10' : ''); line(lang === 'es' ? 'Zonas de dolor' : 'Pain locations', p.body.map(k => cat('body', k, lang)).join(', '));
+  h2(L2('histTitle'));
+  Object.keys(C.conditions).forEach(k => line(cat('conditions', k, lang).replace(/\s*\(.*\)/, '').replace(/[¿?]/g, ''), yn(k) + (k === 'surgery' && p.surgeryDetail ? ' — ' + p.surgeryDetail : ''), { red: p.cond[k] === 'yes' }));
+  if (p.otherCond) line(L2('otherConditions'), p.otherCond);
+  line(L2('medTitle'), p.takesMeds === 'no' ? L2('no') : p.meds.join(', '));
+  h2(L2('vitals')); line(L2('bp'), v.bpSys && v.bpDia ? `${v.bpSys}/${v.bpDia}` : ''); line(L2('pulse'), v.pulse); line(L2('temp'), v.temp); line(lang === 'es' ? 'Dolor (proveedor)' : 'Pain (provider)', (v.pain ?? p.pain) != null ? (v.pain ?? p.pain) + '/10' : '');
+  h2(lang === 'es' ? 'Evaluación y plan' : 'Assessment and plan');
+  ['findings', 'diagnosis', 'treatment', 'medicines'].forEach(sec => line(L2(sec), v.pick[sec].map(s => pick(s)[lang]).concat(v.notes[sec] ? [v.notes[sec]] : []).join('; ')));
+  h2(L2('checklist').replace(/\s*\(.*\)/, ''));
+  const saveLang = state.lang; state.lang = lang; const items = checklistItems(); state.lang = saveLang;
+  items.forEach(i => { const lines = doc.splitTextToSize(`[${v.check[i.key] ? 'X' : ' '}] ${i.label}${i.hint ? ' — ' + i.hint : ''}`, W - 2 * M); ensure(lines.length * 13); doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.text(lines, M, y); y += lines.length * 13 + 2; });
+  h2(L2('consTitle')); doc.setFontSize(9.5); const ct = doc.splitTextToSize(L2('consText'), W - 2 * M); ensure(ct.length * 12); doc.text(ct, M, y); y += ct.length * 12 + 6;
+  line(lang === 'es' ? 'Consentimiento' : 'Consent', p.consent ? (lang === 'es' ? 'Aceptado por el paciente en la tablet' : 'Accepted by patient on tablet') : '');
+  ensure(110); const sw = (W - 2 * M - 30) / 2;
+  [[p.patientSig, `${L2('patSig')}: ${fullName()}`], [v.sig, `${L2('provSigTitle')}: ${cfg.doctorName}`]].forEach(([img, lbl], i) => { const x = M + i * (sw + 30); if (img) doc.addImage(img, 'PNG', x, y, sw, 70); doc.setDrawColor(150); doc.line(x, y + 74, x + sw, y + 74); doc.setFontSize(9); doc.text(lbl, x, y + 88); });
+  y += 100; footer();
+  return doc;
+}
+let lastBlobUrl = null;
+function finishExport(mode) {
+  const lang = state.provider.pdfLang || state.lang; const doc = buildPdf(lang);
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+  if (mode === 'print') { doc.autoPrint(); lastBlobUrl = doc.output('bloburl'); const w = window.open(lastBlobUrl, '_blank'); if (!w) doc.save(`${(window.BRAND || 'ClinicPad').replace(/\W+/g, '')}_${stamp}.pdf`); setTimeout(() => { if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl); lastBlobUrl = null; }, 120000); }
+  else doc.save(`${(window.BRAND || 'ClinicPad').replace(/\W+/g, '')}_${lang}_${stamp}.pdf`);
+  wipe('done');
+}
+
+// ---------- wipe ----------
+function wipe(next = 'start') {
+  state.patient = newPatient(); state.provider = newProvider(); state.pinBuf = ''; state.msg = null;
+  document.querySelectorAll('canvas').forEach(c => { c.width = c.height = 0; });
+  document.querySelectorAll('input[type=file]').forEach(i => (i.value = ''));
+  try { sessionStorage.clear(); } catch (e) {}
+  hideIdle(); go(next);
+}
+
+// ---------- actions ----------
+const actions = {
+  toggleLang() { state.lang = state.lang === 'es' ? 'en' : 'es'; document.documentElement.lang = state.lang; const y = scrollY; render(); scrollTo(0, y); },
+  setVal(el) { setPath(el.dataset.path, el.dataset.val); const y = scrollY; render(); scrollTo(0, y); },
+  toggleArr(el) { toggle(getPath(el.dataset.path), el.dataset.val); const y = scrollY; render(); scrollTo(0, y); },
+  setPain(el) { setPath(el.dataset.path, +el.dataset.val); const y = scrollY; render(); scrollTo(0, y); },
+  toggleBody(el) { toggle(state.patient.body, el.dataset.val); const y = scrollY; render(); scrollTo(0, y); },
+  togglePick(el) { toggle(state.provider.pick[el.dataset.sec], el.dataset.val); const y = scrollY; render(); scrollTo(0, y); },
+  goto(el) { go(el.dataset.val); },
+  clearSig(el) { setPath(el.dataset.val, ''); const y = scrollY; render(); scrollTo(0, y); },
+  useSavedSig() { state.provider.sig = state.config.sig; refreshLock(); },
+  async saveSetup() {
+    const d = state.draft;
+    if (!d.doctorName.trim() || !d.clinic.trim() || !d.license.trim()) { state.msg = { type: 'err', text: T('required') }; return render(); }
+    if (!/^\d{4,6}$/.test(d.pin) || d.pin !== d.pin2) { state.msg = { type: 'err', text: T('pinMismatch') }; return render(); }
+    state.config = { doctorName: d.doctorName.trim(), clinic: d.clinic.trim(), clinicAddr: d.clinicAddr.trim(), license: d.license.trim(), specialty: d.specialty, pin: d.pin, sig: d.sig,
+      custom: d.customText.split('\n').map(s => s.trim()).filter(Boolean), timeoutMin: Math.max(1, Math.min(30, +d.timeoutMin || 2)) };
+    if (d.saveEnc && crypto.subtle) { await saveSettings(state.config); toast(state.lang === 'es' ? 'Configuración guardada (cifrada)' : 'Setup saved (encrypted)'); }
+    else localStorage.removeItem(SETTINGS_KEY);
+    state.draft.pin = state.draft.pin2 = ''; go('start');
+  },
+  forgetSettings() { if (confirm(T('forget') + '?')) { localStorage.removeItem(SETTINGS_KEY); state.pinBuf = ''; go('setup'); } },
+  settings() { state.pinTarget = 'settings'; state.pinBuf = ''; go('pin'); },
+  begin() { if (!state.patient.name.trim()) { state.msg = { type: 'err', text: T('startPrompt') }; return render(); } const parts = state.patient.name.trim().split(/\s+/); state.patient.first = parts[0]; state.patient.last = parts.slice(1).join(' '); go('license'); },
+  next() { const i = PATIENT_STEPS.indexOf(state.screen); if (state.screen === 'allergies' && !state.patient.hasAllergies) { state.msg = { type: 'err', text: T('hasAllergies') }; return render(); } go(PATIENT_STEPS[i + 1]); },
+  addMed() { const m = state.patient.medInput.trim(); if (m) { state.patient.meds.push(m); state.patient.medInput = ''; } render(); document.getElementById('medInput')?.focus(); },
+  removeMed(el) { state.patient.meds.splice(+el.dataset.val, 1); render(); },
+  finishPatient() { const p = state.patient; if (!p.consent || !p.patientSig) { state.msg = { type: 'err', text: `${T('consCheck')} + ${T('patSig')}` }; return render(); } go('handoff'); },
+  staffAccess() { state.pinTarget = 'provider'; state.pinBuf = ''; go('pin'); },
+  pinDigit(el) { if (state.pinBuf.length < 6) state.pinBuf += el.dataset.val; render(); },
+  pinDel() { state.pinBuf = state.pinBuf.slice(0, -1); render(); },
+  async pinOk() {
+    if (state.screen === 'unlock') {
+      try { state.config = await loadSettings(state.pinBuf); Object.assign(state.draft, { doctorName: state.config.doctorName, clinic: state.config.clinic, clinicAddr: state.config.clinicAddr || '', license: state.config.license, specialty: state.config.specialty, sig: state.config.sig, customText: (state.config.custom || []).join('\n'), timeoutMin: state.config.timeoutMin, saveEnc: true }); state.pinBuf = ''; go('start'); }
+      catch (e) { state.pinBuf = ''; state.msg = { type: 'err', text: T('badPin') }; render(); }
+      return;
+    }
+    if (state.pinBuf === state.config.pin) { state.pinBuf = ''; go(state.pinTarget === 'settings' ? 'setup' : 'provider'); }
+    else { state.pinBuf = ''; state.msg = { type: 'err', text: T('badPin') }; render(); }
+  },
+  pinCancel() { state.pinBuf = ''; go(state.pinTarget === 'settings' ? 'start' : 'handoff'); },
+  exportPdf() { finishExport('save'); },
+  printPdf() { finishExport('print'); },
+  cancelVisit() { if (confirm(T('confirmCancel'))) wipe('start'); },
+  nextPatient() { go('start'); },
+  idleKeep() { hideIdle(); state.lastActivity = Date.now(); }
+};
+
+// ---------- render & events ----------
+function render() {
+  const app = document.getElementById('app');
+  app.innerHTML = screens[state.screen]();
+  document.getElementById('langBtn').textContent = T('langBtn');
+  document.getElementById('footer').textContent = T('footer');
+  document.querySelectorAll('[data-brand]').forEach(e => { e.textContent = window.BRAND || 'ClinicPad'; }); document.title = (window.BRAND || 'ClinicPad') + ' V1 — ' + (state.lang === 'es' ? 'Prototipo' : 'Prototype');
+  document.body.dataset.device = state.device; document.body.classList.toggle('reception', state.reception);
+  const b = document.getElementById('allergyBanner');
+  if (state.screen === 'provider') {
+    const p = state.patient; b.hidden = false;
+    if (p.hasAllergies === 'yes') { b.className = 'allergy-banner'; b.innerHTML = `<span class="ico">⚠️</span><span>${T('allergyBanner')}: ${esc(allergyLabels().join(', ') || T('yes'))}</span>`; }
+    else if (p.hasAllergies === 'no') { b.className = 'allergy-banner ok'; b.innerHTML = `<span class="ico">✓</span><span>${T('noAllergies')}</span>`; }
+    else { b.className = 'allergy-banner warn'; b.innerHTML = `<span class="ico">⚠️</span><span>${T('allergyUnknown')}</span>`; }
+  } else b.hidden = true;
+  initSigPads();
+  const lf = document.getElementById('licFile'); if (lf) lf.addEventListener('change', () => onLicenseFile(lf));
+  // keyboard-friendly: focus first field on desktop / reception
+  if (state.reception || state.device === 'desktop') { const f = app.querySelector('input[type=text]:not([value]),input[type=text][value=""],textarea,input[type=password]') || app.querySelector('[data-enter]'); if (f && !['provider'].includes(state.screen)) f.focus({ preventScroll: true }); }
+}
+document.addEventListener('click', e => { const el = e.target.closest('[data-action]'); if (!el || el.disabled) return; e.preventDefault(); actions[el.dataset.action]?.(el); });
+document.addEventListener('input', e => { const el = e.target; if (!el.dataset.bind) return; setPath(el.dataset.bind, el.type === 'checkbox' ? el.checked : el.value); });
+document.addEventListener('change', e => { const el = e.target; if (!el.dataset.bind) return; setPath(el.dataset.bind, el.type === 'checkbox' ? el.checked : el.value); if (el.dataset.rerender || el.type === 'checkbox') { const y = scrollY; render(); scrollTo(0, y); } });
+document.addEventListener('keydown', e => {
+  const t = e.target;
+  // physical keyboard on the PIN screens
+  if (['pin', 'unlock'].includes(state.screen) && !['INPUT', 'TEXTAREA'].includes(t.tagName)) {
+    if (/^\d$/.test(e.key)) { actions.pinDigit({ dataset: { val: e.key } }); return; }
+    if (e.key === 'Backspace') { actions.pinDel(); return; }
+    if (e.key === 'Enter') { actions.pinOk(); return; }
+  }
+  if ((e.key === 'Enter' || e.key === ' ') && t.matches && t.matches('[role=button][data-action]')) { e.preventDefault(); actions[t.dataset.action](t); return; }
+  if (e.key !== 'Enter') return;
+  if (t.tagName === 'TEXTAREA' && !(e.ctrlKey || e.metaKey)) return; // Ctrl/Cmd+Enter advances from textareas
+  if (t.tagName === 'BUTTON') return; // native button activation
+  if (t.dataset && t.dataset.enterAction) { e.preventDefault(); actions[t.dataset.enterAction](t); return; }
+  if (['INPUT', 'SELECT', 'TEXTAREA'].includes(t.tagName) || t === document.body) {
+    const btn = document.querySelector('#app [data-enter]:not([disabled])'); if (btn) { e.preventDefault(); if (t.dataset && t.dataset.bind) setPath(t.dataset.bind, t.type === 'checkbox' ? t.checked : t.value); actions[btn.dataset.action](btn); }
+  }
+});
+
+// ---------- inactivity auto-wipe ----------
+const idleEl = document.getElementById('idle'); const IDLE_WARN = 15;
+['pointerdown', 'keydown', 'input', 'wheel', 'touchstart'].forEach(ev => document.addEventListener(ev, () => { if (idleEl.hidden) state.lastActivity = Date.now(); }, { passive: true, capture: true }));
+function hideIdle() { idleEl.hidden = true; state.idleCount = 0; }
+setInterval(() => {
+  if (!state.config || ['setup', 'unlock', 'done'].includes(state.screen)) return;
+  const hasData = state.screen !== 'start' || state.patient.name;
+  if (!hasData) return;
+  const limit = qs.get('idleSec') ? +qs.get('idleSec') * 1000 : state.config.timeoutMin * 60000;
+  const idle = Date.now() - state.lastActivity;
+  if (idle >= limit) {
+    const left = IDLE_WARN - Math.floor((idle - limit) / 1000);
+    if (left <= 0) { wipe('start'); toast(T('wiped')); return; }
+    idleEl.hidden = false; document.getElementById('idleTitle').textContent = T('idleTitle'); document.getElementById('idleText').textContent = T('idleText').replace('{s}', left); document.getElementById('idleKeep').textContent = T('idleKeep');
+  }
+}, 500);
+window.addEventListener('pagehide', () => { state.patient = newPatient(); state.provider = newProvider(); });
+
+// ---------- boot ----------
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) navigator.serviceWorker.register('sw.js').catch(() => {});
+state.screen = localStorage.getItem(SETTINGS_KEY) && crypto.subtle ? 'unlock' : 'setup';
+render();
+})();
