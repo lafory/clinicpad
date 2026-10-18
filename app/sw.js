@@ -1,6 +1,6 @@
 // ClinicPad V1 service worker: caches ONLY the app shell (code/assets). Never caches patient data.
 // Network-first (fresh code after every deploy), cache fallback for offline use.
-const CACHE = 'clinicpad-v1-shell-8';
+const CACHE = 'clinicpad-v1-shell-9';
 const ASSETS = ['./', './index.html', './styles.css', './app.js', './i18n.js', './brand.js', './manifest.webmanifest', './icon.svg', './vendor/jspdf.umd.min.js', './vendor/zxing.min.js'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
