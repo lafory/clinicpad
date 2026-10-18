@@ -34,11 +34,13 @@ const newProvider = () => ({
   bpSys: '', bpDia: '', pulse: '', temp: '', pain: null,
   pick: { findings: [], diagnosis: [], treatment: [], medicines: [] },
   notes: { findings: '', diagnosis: '', treatment: '', medicines: '' },
-  check: {}, sig: '', pdfLang: null, spec: null
+  check: {}, sig: '', pdfLang: null, spec: null, staffId: null
 });
+const newDraft = () => ({ name: '', logo: '', logoW: 0, logoH: 0, address: '', phone: '', specialty: 'dental', customText: '', timeoutMin: 2, adminPin: '', adminPin2: '', saveEnc: false, staff: [], pass: '', importPass: '' });
+const newStaff = () => ({ id: '', name: '', role: 'dentist', license: '', photo: '', sig: '', pin: '', pin2: '' });
 const state = {
-  lang: 'es', device: detectDevice(), reception: false, inputMode: null, screen: 'setup', config: null,
-  draft: { doctorName: '', clinic: '', clinicAddr: '', license: '', specialty: 'dental', pin: '', pin2: '', sig: '', customText: '', timeoutMin: 2, saveEnc: false },
+  lang: 'es', device: detectDevice(), reception: false, inputMode: null, screen: 'clinic', config: null,
+  draft: newDraft(), staffDraft: newStaff(), selStaff: null, importText: '',
   patient: newPatient(), provider: newProvider(), pinBuf: '', pinTarget: 'provider', msg: null, lastActivity: Date.now(), idleCount: 0
 };
 state.reception = state.device === 'desktop';
@@ -59,22 +61,65 @@ const navBtns = (backTo, nextAction = 'next', nextLabel = T('next')) => `<div cl
 const progress = () => { const i = PATIENT_STEPS.indexOf(state.screen); return i < 0 ? '' : `<div class="progress">${PATIENT_STEPS.map((_, j) => `<i class="${j <= i ? 'on' : ''}"></i>`).join('')}</div>`; };
 const msgBox = () => state.msg ? `<div class="msg ${state.msg.type}" role="status">${esc(state.msg.text)}</div>` : '';
 const recNote = k => state.reception ? `<p class="small rec">🖥️ ${state.lang === 'es' ? 'Modo recepción: pregunte al paciente y escriba sus respuestas. Enter = siguiente.' : 'Front desk mode: ask the patient and type the answers. Enter = next.'}</p>` : '';
+const roleOf = k => C.roles[k] || { es: k, en: k, spec: null };
+const roleLabel = (k, lang) => roleOf(k)[lang || state.lang];
+const isClinician = st => st.role !== 'reception';
+const initials = n => esc(String(n || '?').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase());
+const avatar = (st, cls = '') => st.photo ? `<img class="avatar ${cls}" src="${st.photo}" alt="">` : `<span class="avatar ini ${cls}" aria-hidden="true">${initials(st.name)}</span>`;
+const curStaff = () => (state.config && state.config.staff.find(x => x.id === state.provider.staffId)) || null;
+const clinicHead = () => { const c = state.config ? state.config.clinic : state.draft; return `<div class="clinic-head">${c.logo ? `<img src="${c.logo}" alt="">` : ''}<div><b>${esc(c.name)}</b>${c.address || c.phone ? `<span>${esc([c.address, c.phone].filter(Boolean).join(' · '))}</span>` : ''}</div></div>`; };
 const pick = s => { const [es, en] = s.split('|'); return { es, en: en || es }; };
 
 // ---------- screens ----------
 const screens = {
-  setup() {
+  clinic() {
     const d = state.draft, editing = !!state.config;
-    return `<div class="card"><h1>${T('setupTitle')}</h1><p class="lead">${T('setupIntro')}</p>${msgBox()}
-      <div class="grid2"><div>${field('docName', 'draft.doctorName', 'text', 'autocomplete="off"')}</div><div>${field('licenseNo', 'draft.license')}</div></div>
-      <div class="grid2"><div>${field('clinicName', 'draft.clinic')}</div><div>${field('clinicAddr', 'draft.clinicAddr')}</div></div>
+    return `<div class="card"><h1>${T('clinicTitle')}</h1><p class="lead">${T('clinicIntro')}</p>${msgBox()}
+      <div class="grid2"><div>${field('clinicName', 'draft.name', 'text', 'autocomplete="off"')}</div><div>${field('clinicPhone', 'draft.phone', 'tel')}</div></div>
+      ${field('clinicAddr', 'draft.address')}
+      <label class="f">${T('logo')}</label>
+      <div class="row logo-row"><div class="logo-prev" id="logoPrev">${d.logo ? `<img src="${d.logo}" alt="logo">` : `<span class="small">${state.lang === 'es' ? 'Sin logo' : 'No logo'}</span>`}</div>
+        <span class="btn ghost filebtn">🖼️ ${T('logoUpload')}<input type="file" id="logoFile" accept="image/*" aria-label="${T('logoUpload')}"></span>
+        ${d.logo ? `<button class="btn ghost" data-action="removeLogo">${T('logoRemove')}</button>` : ''}</div><p class="small">${T('logoHint')}</p>
       <label class="f">${T('specialty')}</label><div class="chips">${Object.keys(C.specialties).map(k => chip(d.specialty === k, cat('specialties', k), 'setVal', k).replace('data-val', 'data-path="draft.specialty" data-val')).join('')}</div>
-      <div class="grid2"><div>${field('pin', 'draft.pin', 'password', 'inputmode="numeric" maxlength="6" autocomplete="new-password"')}</div><div>${field('pin2', 'draft.pin2', 'password', 'inputmode="numeric" maxlength="6" autocomplete="new-password"')}</div></div>
-      <label class="f">${T('provSig')}</label>${sigPad('draft.sig')}
       <label class="f" for="cq">${T('customQ')}</label><textarea id="cq" data-bind="draft.customText" placeholder="${state.lang === 'es' ? 'Ej.: ¿Paciente en ayunas?\nEj.: ¿Rayos X previos revisados?' : 'E.g.: Patient fasting?\nE.g.: Prior X-rays reviewed?'}">${esc(d.customText)}</textarea><p class="small">${T('customQHint')}</p>
       <div class="grid2"><div>${field('timeout', 'draft.timeoutMin', 'number', 'min="1" max="30"')}</div></div>
-      <label class="check ${d.saveEnc ? 'done' : ''}" style="margin-top:16px"><input type="checkbox" data-bind="draft.saveEnc" ${d.saveEnc ? 'checked' : ''} ${crypto.subtle ? '' : 'disabled'}><span>${T('saveEnc')}${crypto.subtle ? '' : `<span class="hint flag">${state.lang === 'es' ? 'No disponible: requiere HTTPS o localhost.' : 'Unavailable: requires HTTPS or localhost.'}</span>`}</span></label>
-      <div class="nav">${editing ? `<button class="btn ghost xl" data-action="goto" data-val="start">${T('cancel')}</button>` : '<span></span>'}<button class="btn primary xl" data-action="saveSetup" data-enter="1">${T('startUsing')} →</button></div></div>`;
+      <div class="grid2"><div>${field('adminPin', 'draft.adminPin', 'password', 'inputmode="numeric" maxlength="8" autocomplete="new-password"')}</div><div>${field('adminPin2', 'draft.adminPin2', 'password', 'inputmode="numeric" maxlength="8" autocomplete="new-password"')}</div></div>
+      <p class="small">${T('adminPinHint')}${editing || d._adminPin ? (state.lang === 'es' ? ' Déjelo en blanco para mantener el actual.' : ' Leave blank to keep the current one.') : ''}</p>
+      ${editing ? '' : importBlock()}
+      <div class="nav">${editing ? `<button class="btn ghost xl" data-action="goto" data-val="start">${T('cancel')}</button>` : '<span></span>'}<button class="btn primary xl" data-action="clinicNext" data-enter="1">${T('continueStaff')} →</button></div></div>`;
+  },
+  staff() {
+    const d = state.draft;
+    const list = d.staff.length ? d.staff.map(st => `<div class="staff-row">${avatar(st)}<div class="who"><b>${esc(st.name)}</b><span class="small">${esc(roleLabel(st.role))}${st.license ? ' · ' + (state.lang === 'es' ? 'Lic. ' : 'Lic. ') + esc(st.license) : ''}${st.sig ? ' · ✍️' : ''}</span></div>
+        <button class="btn ghost" data-action="editStaff" data-val="${esc(st.id)}">${T('editStaff')}</button><button class="btn danger" data-action="delStaff" data-val="${esc(st.id)}" aria-label="${T('delStaff')} ${esc(st.name)}">✕</button></div>`).join('') : `<p class="msg info">${T('noStaff')}</p>`;
+    return `<div class="card">${clinicHead()}<h1>${T('staffTitle')}</h1><p class="lead">${T('staffIntro')}</p>${msgBox()}
+      <div id="staffList">${list}</div>
+      <button class="btn primary" data-action="addStaff" style="margin-top:12px">＋ ${T('addStaff')}</button></div>
+      <div class="card"><h2>${T('storageTitle')}</h2>
+      <label class="check ${d.saveEnc ? 'done' : ''}"><input type="checkbox" data-bind="draft.saveEnc" ${d.saveEnc ? 'checked' : ''} ${crypto.subtle ? '' : 'disabled'}><span>${T('saveEnc')}${crypto.subtle ? '' : `<span class="hint flag">${state.lang === 'es' ? 'No disponible: requiere HTTPS o localhost.' : 'Unavailable: requires HTTPS or localhost.'}</span>`}</span></label>
+      <h3>${T('exportTitle')}</h3><p class="small">${T('exportIntro')}</p>
+      <div class="row"><input type="password" id="exportPass" data-bind="draft.pass" value="${esc(d.pass)}" placeholder="${T('passphrase')}" aria-label="${T('passphrase')}" autocomplete="new-password" style="flex:1;min-width:240px"><button class="btn ghost" data-action="exportConfig" ${crypto.subtle ? '' : 'disabled'}>🔐 ${T('exportBtn')}</button></div>
+      <div class="nav"><button class="btn ghost xl" data-action="goto" data-val="clinic">${T('backToClinic')}</button><button class="btn primary xl" id="saveSetupBtn" data-action="saveSetup" data-enter="1">${T('startUsing')} →</button></div></div>`;
+  },
+  staffEdit() {
+    const s = state.staffDraft, isNew = !state.draft.staff.some(x => x.id === s.id);
+    return `<div class="card"><h1>${T('staffEditTitle')}</h1>${msgBox()}
+      <div class="row photo-row"><div id="photoPrev">${avatar(s, 'lg')}</div><div><label class="f" style="margin-top:0">${T('photo')}</label>
+        <div class="row"><span class="btn ghost filebtn">📷 ${state.lang === 'es' ? 'Cámara' : 'Camera'}<input type="file" id="photoCam" accept="image/*" capture="user" aria-label="${T('photoTake')}"></span>
+        <span class="btn ghost filebtn">🖼️ ${state.lang === 'es' ? 'Subir' : 'Upload'}<input type="file" id="photoFile" accept="image/*" aria-label="${T('photoTake')}"></span></div><p class="small">${T('photoHint')}</p></div></div>
+      <div class="grid2"><div>${field('staffName', 'staffDraft.name', 'text', 'autocomplete="off"')}</div><div>${field('staffLicense', 'staffDraft.license')}</div></div>
+      <label class="f">${T('role')}</label><div class="chips">${Object.keys(C.roles).map(k => chip(s.role === k, roleLabel(k), 'setVal', k).replace('data-val', 'data-path="staffDraft.role" data-val')).join('')}</div>
+      <div class="grid2"><div>${field('staffPin', 'staffDraft.pin', 'password', 'inputmode="numeric" maxlength="6" autocomplete="new-password"')}</div><div>${field('staffPin2', 'staffDraft.pin2', 'password', 'inputmode="numeric" maxlength="6" autocomplete="new-password"')}</div></div>
+      ${isNew ? '' : `<p class="small">${state.lang === 'es' ? 'Deje el PIN en blanco para mantener el actual.' : 'Leave the PIN blank to keep the current one.'}</p>`}
+      <label class="f">${T('staffSig')}</label>${sigPad('staffDraft.sig')}
+      <div class="nav"><button class="btn ghost xl" data-action="goto" data-val="staff">${T('cancel')}</button><button class="btn primary xl" data-action="saveStaff" data-enter="1">${T('saveStaff')} ✓</button></div></div>`;
+  },
+  selectStaff() {
+    const list = state.config.staff.filter(isClinician);
+    return `<div class="card center">${clinicHead()}<h1>${T('selectStaffTitle')}</h1><p class="lead">${T('selectStaffIntro')}</p>
+      <div class="staff-grid">${list.map(st => `<button class="staff-tile" data-action="pickStaff" data-val="${esc(st.id)}">${avatar(st, 'lg')}<b>${esc(st.name)}</b><span>${esc(roleLabel(st.role))}</span></button>`).join('')}</div>
+      <button class="btn ghost" data-action="goto" data-val="handoff" style="margin-top:16px">${T('pinBack')}</button></div>`;
   },
   unlock() {
     return `<div class="card center"><h1>${T('unlockTitle')}</h1><p class="lead">${T('unlockIntro')}</p>${msgBox()}${pinPad()}
@@ -82,7 +127,7 @@ const screens = {
   },
   start() {
     const devLbl = { phone: state.lang === 'es' ? 'Teléfono' : 'Phone', tablet: 'Tablet', desktop: state.lang === 'es' ? 'Computadora' : 'Desktop' }[state.device];
-    return `<div class="card hero"><div class="small">${esc(state.config.clinic)} · ${esc(state.config.doctorName)}</div>
+    return `<div class="card hero">${clinicHead()}
       <div class="big">${T('startPrompt')}</div>${recNote()}${state.device === 'phone' ? `<p class="msg warn phone-note">📱 ${state.lang === 'es' ? 'Está usando un teléfono. Funciona, pero para firmar y para la pantalla del proveedor recomendamos una tablet o computadora.' : 'You are on a phone. It works, but a tablet or computer is recommended for signing and the provider screen.'}</p>` : ''}
       <input id="startName" type="text" data-bind="patient.name" value="${esc(state.patient.name)}" placeholder="${T('namePh')}" autocomplete="off" autofocus aria-label="${T('startPrompt')}">
       ${msgBox()}<button class="btn primary xl" data-action="begin" data-enter="1">${T('begin')} →</button>
@@ -146,7 +191,7 @@ const screens = {
   },
   consent() {
     const p = state.patient;
-    return `${progress()}<div class="card"><h2>${T('consTitle')}</h2>${msgBox()}<p style="font-size:20px">${T('consText')}</p>
+    return `${progress()}<div class="card">${clinicHead()}<h2>${T('consTitle')}</h2>${msgBox()}<p style="font-size:20px">${T('consText')}</p>
       <label class="check ${p.consent ? 'done' : ''}"><input type="checkbox" data-bind="patient.consent" ${p.consent ? 'checked' : ''}><span><b>${T('consCheck')}</b></span></label>
       <label class="f">${T('patSig')} — ${esc(p.name)}</label>${sigPad('patient.patientSig')}
       ${state.reception ? `<p class="small">${state.lang === 'es' ? 'El paciente puede firmar con el mouse/trackpad, o entréguele una tablet.' : 'The patient can sign with the mouse/trackpad, or hand them a tablet.'}</p>` : ''}
@@ -157,12 +202,13 @@ const screens = {
       <button class="btn primary xl" data-action="staffAccess" data-enter="1">🔒 ${T('staffAccess')}</button></div>`;
   },
   pin() {
-    return `<div class="card center"><h1>${T('pinTitle')}</h1><p class="lead">${T('pinEnter')}</p>${msgBox()}${pinPad()}
+    const st = state.pinTarget === 'provider' && state.config.staff.find(x => x.id === state.selStaff);
+    return `<div class="card center">${st ? `<div class="pin-who">${avatar(st, 'lg')}<b>${esc(st.name)}</b><span>${esc(roleLabel(st.role))}</span></div><h1>${T('pinFor')} ${esc(st.name.split(' ')[0])}</h1>` : `<h1>${state.pinTarget === 'settings' ? T('adminPin').replace(/\s*\(.*\)/, '') : T('pinTitle')}</h1>`}<p class="lead">${T('pinEnter')}</p>${msgBox()}${pinPad()}
       <button class="btn ghost" data-action="pinCancel">${T('pinBack')}</button></div>`;
   },
   provider() {
     const p = state.patient, v = state.provider, cfg = state.config;
-    const spec = v.spec || cfg.specialty;
+    const st = curStaff() || { name: '', role: '' }; const spec = v.spec || roleOf(st.role).spec || cfg.clinic.specialty;
     const yesList = Object.keys(C.conditions).filter(k => p.cond[k] === 'yes');
     const sections = ['findings', 'diagnosis', 'treatment', 'medicines'].map(sec => `<h3>${T(sec)}</h3>
       <div class="chips">${C.quick[spec][sec].map(s => { const o = pick(s); return chip(v.pick[sec].includes(s), o[state.lang], 'togglePick', s).replace('data-val', `data-sec="${sec}" data-val`); }).join('')}</div>
@@ -171,7 +217,7 @@ const screens = {
     const left = items.filter(i => !v.check[i.key]).length;
     const ready = left === 0 && !!v.sig;
     const lang = v.pdfLang || state.lang;
-    return `<div class="card summary"><div class="row between"><h2>${T('patientSummary')}</h2><span class="tag">${esc(cfg.doctorName)} · ${cat('specialties', spec)}</span></div>
+    return `<div class="card summary"><div class="row between"><h2>${T('patientSummary')}</h2><span class="tag prov-tag">${avatar(st, 'sm')}${esc(st.name)} · ${esc(roleLabel(st.role))}</span></div>
       <dl><dt>${T('namePh')}</dt><dd><b>${esc(fullName())}</b></dd>
       <dt>${T('dob')}</dt><dd>${esc(p.dob) || '—'} ${p.licSource ? `<span class="tag">${state.lang === 'es' ? 'leído de licencia' : 'read from license'}</span>` : ''}</dd>
       <dt>${T('reason')}</dt><dd>${esc(p.reason) || '—'}</dd>
@@ -189,7 +235,7 @@ const screens = {
         <div class="tabs"><span class="small">${T('quickFor')}</span>${Object.keys(C.specialties).map(k => chip(spec === k, cat('specialties', k), 'setVal', k).replace('data-val', 'data-path="provider.spec" data-val')).join('')}</div></div>${sections}</div>
       <div class="card" id="checklistCard"><h2>${T('checklist')}</h2>
         ${items.map(i => `<label class="check ${v.check[i.key] ? 'done' : ''}"><input type="checkbox" data-bind="provider.check.${i.key}" data-rerender="1" ${v.check[i.key] ? 'checked' : ''}><span>${esc(i.label)}${i.hint ? `<span class="hint ${i.flag ? 'flag' : ''}">${esc(i.hint)}</span>` : ''}</span></label>`).join('')}
-        <h3>${T('provSigTitle')}</h3>${cfg.sig ? `<button class="btn ghost" data-action="useSavedSig" style="margin-bottom:10px">✍️ ${T('useSaved')}</button>` : ''}${sigPad('provider.sig')}
+        <h3>${T('provSigTitle')}</h3>${st.sig ? `<button class="btn ghost" data-action="useSavedSig" style="margin-bottom:10px">✍️ ${T('useSaved')}</button>` : ''}${sigPad('provider.sig')}
         <div id="lockbar" class="lockbar ${ready ? 'open' : 'locked'}">${ready ? '🔓 ' + T('clUnlocked') : '🔒 ' + T('clLocked').replace('{n}', left) + (v.sig ? '' : ' · ' + T('sigMissing'))}</div>
         <label class="f">${T('pdfLang')}</label><div class="chips">${chip(lang === 'es', 'Español', 'setVal', 'es').replace('data-val', 'data-path="provider.pdfLang" data-val')}${chip(lang === 'en', 'English', 'setVal', 'en').replace('data-val', 'data-path="provider.pdfLang" data-val')}</div>
         <div class="nav"><button class="btn danger" data-action="cancelVisit">🗑️ ${T('cancelVisit')}</button>
@@ -254,7 +300,7 @@ function checklistItems() {
     { key: 'pain', label: cl('pain'), hint: (v.pain ?? p.pain) != null ? `${v.pain ?? p.pain}/10` : (state.lang === 'es' ? 'Sin registrar' : 'Not recorded'), flag: (v.pain ?? p.pain) == null },
     { key: 'explained', label: cl('explained') }
   ];
-  (state.config.custom || []).forEach((q, i) => items.push({ key: 'c' + i, label: '★ ' + q }));
+  (state.config.clinic.custom || []).forEach((q, i) => items.push({ key: 'c' + i, label: '★ ' + q }));
   return items;
 }
 
@@ -345,18 +391,53 @@ async function onLicenseFile(input) {
   const m = state.msg; render(); state.msg = m; document.getElementById('licStatus').innerHTML = msgBox();
 }
 
-// ---------- encrypted settings (provider config only) ----------
+// ---------- encrypted settings (clinic + staff config only; NEVER patient data) ----------
 const enc = new TextEncoder(), dec = new TextDecoder();
-const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf))), unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-async function keyFromPin(pin, salt) { const base = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveKey']); return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 150000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']); }
-async function saveSettings(cfg) {
+const b64 = buf => { const a = new Uint8Array(buf); let str = ''; for (let i = 0; i < a.length; i += 0x8000) str += String.fromCharCode.apply(null, a.subarray(i, i + 0x8000)); return btoa(str); };
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const KDF_ITER = 150000;
+async function keyFromSecret(secret, salt, iter = KDF_ITER) { const base = await crypto.subtle.importKey('raw', enc.encode(secret), 'PBKDF2', false, ['deriveKey']); return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']); }
+async function encryptJSON(obj, secret, extra = {}) {
   const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await keyFromPin(cfg.pin, salt); const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify(cfg)));
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify({ v: 1, salt: b64(salt), iv: b64(iv), ct: b64(ct) }));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await keyFromSecret(secret, salt), enc.encode(JSON.stringify(obj)));
+  return { ...extra, v: 2, kdf: 'PBKDF2-SHA256', iter: KDF_ITER, alg: 'AES-GCM-256', salt: b64(salt), iv: b64(iv), ct: b64(ct) };
 }
-async function loadSettings(pin) {
-  const o = JSON.parse(localStorage.getItem(SETTINGS_KEY)); const key = await keyFromPin(pin, unb64(o.salt));
-  return JSON.parse(dec.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(o.iv) }, key, unb64(o.ct))));
+async function decryptJSON(o, secret) { const key = await keyFromSecret(secret, unb64(o.salt), o.iter || KDF_ITER); return JSON.parse(dec.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(o.iv) }, key, unb64(o.ct)))); }
+// config v1 (single provider) -> v2 (clinic + staff)
+function migrateConfig(c) {
+  if (c && c.clinic && typeof c.clinic === 'object' && Array.isArray(c.staff)) return c;
+  const roleBySpec = { dental: 'dentist', pt: 'physio', chiro: 'chiro', therapy: 'therapist' };
+  return { adminPin: c.pin, clinic: { name: c.clinic || '', logo: '', logoW: 0, logoH: 0, address: c.clinicAddr || '', phone: '', specialty: c.specialty || 'dental', custom: c.custom || [], timeoutMin: c.timeoutMin || 2 },
+    staff: [{ id: 's1', name: c.doctorName || '', role: roleBySpec[c.specialty] || 'physician', license: c.license || '', photo: '', sig: c.sig || '', pin: c.pin }] };
+}
+function validConfig(c) { return c && c.clinic && typeof c.clinic.name === 'string' && Array.isArray(c.staff) && c.staff.every(x => x && x.id && typeof x.pin === 'string') && typeof c.adminPin === 'string'; }
+async function saveSettings(cfg) { localStorage.setItem(SETTINGS_KEY, JSON.stringify(await encryptJSON(cfg, cfg.adminPin))); }
+async function loadSettings(pin) { return migrateConfig(await decryptJSON(JSON.parse(localStorage.getItem(SETTINGS_KEY)), pin)); }
+function configToDraft(c) {
+  const k = c.clinic;
+  state.draft = Object.assign(newDraft(), { name: k.name, logo: k.logo || '', logoW: k.logoW || 0, logoH: k.logoH || 0, address: k.address || '', phone: k.phone || '', specialty: k.specialty || 'dental',
+    customText: (k.custom || []).join('\n'), timeoutMin: k.timeoutMin || 2, saveEnc: !!localStorage.getItem(SETTINGS_KEY), staff: c.staff.map(x => ({ ...x })), _adminPin: c.adminPin });
+}
+// ---------- images (resized client-side; never patient images) ----------
+function loadImage(file) { return new Promise((res, rej) => { const url = URL.createObjectURL(file); const im = new Image(); im.onload = () => { URL.revokeObjectURL(url); res(im); }; im.onerror = e => { URL.revokeObjectURL(url); rej(e); }; im.src = url; }); }
+async function resizeLogo(file) {
+  const im = await loadImage(file); const sc = Math.min(1, 480 / im.naturalWidth, 200 / im.naturalHeight);
+  const w = Math.max(1, Math.round(im.naturalWidth * sc)), h = Math.max(1, Math.round(im.naturalHeight * sc));
+  const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(im, 0, 0, w, h);
+  return { data: c.toDataURL('image/png'), w, h };
+}
+async function makeAvatar(file, size = 160) {
+  const im = await loadImage(file); const s = Math.min(im.naturalWidth, im.naturalHeight);
+  const sx = (im.naturalWidth - s) / 2, sy = Math.max(0, (im.naturalHeight - s) * 0.35); // portraits: bias toward the face
+  const c = document.createElement('canvas'); c.width = c.height = size; const ctx = c.getContext('2d');
+  ctx.beginPath(); ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2); ctx.closePath(); ctx.clip();
+  ctx.drawImage(im, sx, sy, s, s, 0, 0, size, size);
+  return c.toDataURL('image/png');
+}
+function download(name, text, type = 'application/octet-stream') { const url = URL.createObjectURL(new Blob([text], { type })); const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000); }
+function importBlock() {
+  return `<div class="import-box"><p class="small"><b>${T('clinicSetupHint')}</b></p><div class="row"><span class="btn ghost filebtn">📂 ${T('importFile')}<input type="file" id="importFile" accept=".cpcfg,application/json,.json" aria-label="${T('importFile')}"></span><span class="small" id="importName">${state.importText ? '✓' : ''}</span></div>
+    <div class="row" style="margin-top:8px"><input type="password" id="importPass" data-bind="draft.importPass" value="${esc(state.draft.importPass)}" placeholder="${T('passphrase')}" aria-label="${T('passphrase')}" style="flex:1;min-width:240px" autocomplete="off"><button class="btn ghost" data-action="importConfig">🔓 ${T('importBtn')}</button></div></div>`;
 }
 
 // ---------- PDF ----------
@@ -364,17 +445,29 @@ function buildPdf(lang) {
   const { jsPDF } = window.jspdf; const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const p = state.patient, v = state.provider, cfg = state.config, L2 = k => TL(lang, k);
   const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 46; let y = M;
-  const ensure = h => { if (y + h > H - 60) { footer(); doc.addPage(); y = M; } };
-  const footer = () => { doc.setFontSize(8); doc.setTextColor(100); doc.text(doc.splitTextToSize(L2('footer'), W - 2 * M), M, H - 34); doc.setTextColor(0); };
+  const st = curStaff() || { name: '', role: '', license: '', photo: '' }; const k = cfg.clinic; const now = new Date();
+  const header = () => {
+    let x = M; const top = 30;
+    if (k.logo) { const ratio = (k.logoW && k.logoH) ? k.logoW / k.logoH : 1, lw = Math.min(130, 42 * ratio), lh = lw / ratio; try { doc.addImage(k.logo, 'PNG', M, top + (42 - lh) / 2, lw, lh); x = M + lw + 10; } catch (e) {} }
+    const avail = W - M - 190 - x, nm = k.name || 'Clinic'; let fz = 15; doc.setTextColor(11, 37, 64); doc.setFont('helvetica', 'bold'); doc.setFontSize(fz);
+    while (doc.getTextWidth(nm) > avail && fz > 10.5) { fz -= 0.5; doc.setFontSize(fz); }
+    const nl = doc.splitTextToSize(nm, avail).slice(0, 2); doc.text(nl, x, top + 15); const subY = top + 15 + nl.length * fz * 0.95 + 1;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(80); const sub = [k.address, k.phone].filter(Boolean).join(' · '); if (sub) doc.text(doc.splitTextToSize(sub, avail).slice(0, nl.length > 1 ? 1 : 2), x, subY);
+    const ps = 42, px = W - M - ps; if (st.photo) { try { doc.addImage(st.photo, 'PNG', px, top, ps, ps); } catch (e) {} }
+    const tx = st.photo ? px - 8 : W - M; doc.setTextColor(11, 37, 64); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text(st.name || '', tx, top + 12, { align: 'right' });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(80); doc.text(st.role ? roleLabel(st.role, lang) : '', tx, top + 24, { align: 'right' }); if (st.license) doc.text(`${lang === 'es' ? 'Licencia' : 'License'}: ${st.license}`, tx, top + 35, { align: 'right' });
+    doc.setTextColor(0); doc.setDrawColor(15, 163, 163); doc.setLineWidth(1.5); doc.line(M, top + 50, W - M, top + 50);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(12.5); doc.setTextColor(11, 37, 64); doc.text(lang === 'es' ? 'Registro de visita del paciente' : 'Patient visit record', M, top + 66);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(80); doc.text(now.toLocaleString(lang === 'es' ? 'es-US' : 'en-US'), W - M, top + 66, { align: 'right' }); doc.setTextColor(0);
+    y = top + 86;
+  };
+  const newPage = () => { doc.addPage(); header(); };
+  const ensure = h => { if (y + h > H - 60) newPage(); };
+  const footer = () => { doc.setFontSize(8); doc.setTextColor(100); doc.text(doc.splitTextToSize(L2('footer'), W - 2 * M - 60), M, H - 34); doc.setTextColor(0); };
   const h2 = t => { ensure(30); y += 8; doc.setFillColor(240, 253, 250); doc.rect(M, y - 12, W - 2 * M, 20, 'F'); doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(15, 118, 110); doc.text(t, M + 6, y + 2); doc.setTextColor(0); y += 18; };
   const line = (label, val, opts = {}) => { doc.setFontSize(10.5); doc.setFont('helvetica', 'bold'); const lw = 175; const ll = doc.splitTextToSize(String(label), lw - 10); doc.setFont('helvetica', 'normal'); const lines = doc.splitTextToSize(String(val || '—'), W - 2 * M - lw); const n = Math.max(ll.length, lines.length); ensure(n * 13 + 4); doc.setFont('helvetica', 'bold'); doc.text(ll, M, y); doc.setFont('helvetica', 'normal'); if (opts.red) doc.setTextColor(185, 28, 28); doc.text(lines, M + lw, y); doc.setTextColor(0); y += n * 13 + 3; };
   const yn = k => p.cond[k] === 'yes' ? L2('yes') : p.cond[k] === 'no' ? L2('no') : p.cond[k] === 'na' ? L2('notApplicable') : '—';
-  // header
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.text(cfg.clinic || 'Clinic', M, y); y += 18;
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text([cfg.clinicAddr, `${cfg.doctorName} · ${lang === 'es' ? 'Licencia' : 'License'}: ${cfg.license}`].filter(Boolean), M, y); y += cfg.clinicAddr ? 26 : 14;
-  const now = new Date(); doc.text(now.toLocaleString(lang === 'es' ? 'es-US' : 'en-US'), W - M, M, { align: 'right' });
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.text(lang === 'es' ? 'Registro de visita del paciente' : 'Patient visit record', W - M, M + 18, { align: 'right' });
-  doc.setDrawColor(15, 118, 110); doc.setLineWidth(1.5); doc.line(M, y, W - M, y); y += 16;
+  header();
   // allergies box
   const al = allergyLabels(lang); const alTxt = p.hasAllergies === 'yes' ? `${L2('allergyBanner')}: ${al.join(', ') || L2('yes')}` : p.hasAllergies === 'no' ? L2('noAllergies') : L2('allergyUnknown');
   doc.setFillColor(...(p.hasAllergies === 'no' ? [220, 252, 231] : [254, 226, 226])); doc.setDrawColor(...(p.hasAllergies === 'no' ? [22, 163, 74] : [220, 38, 38]));
@@ -396,11 +489,12 @@ function buildPdf(lang) {
   h2(L2('checklist').replace(/\s*\(.*\)/, ''));
   const saveLang = state.lang; state.lang = lang; const items = checklistItems(); state.lang = saveLang;
   items.forEach(i => { const lines = doc.splitTextToSize(`[${v.check[i.key] ? 'X' : ' '}] ${i.label}${i.hint ? ' — ' + i.hint : ''}`, W - 2 * M); ensure(lines.length * 13); doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.text(lines, M, y); y += lines.length * 13 + 2; });
-  h2(L2('consTitle')); doc.setFontSize(9.5); const ct = doc.splitTextToSize(L2('consText'), W - 2 * M); ensure(ct.length * 12); doc.text(ct, M, y); y += ct.length * 12 + 6;
+  newPage(); h2(L2('consTitle')); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); const ct = doc.splitTextToSize(L2('consText'), W - 2 * M); ensure(ct.length * 12); doc.text(ct, M, y); y += ct.length * 12 + 6;
   line(lang === 'es' ? 'Consentimiento' : 'Consent', p.consent ? (lang === 'es' ? 'Aceptado por el paciente en la tablet' : 'Accepted by patient on tablet') : '');
   ensure(110); const sw = (W - 2 * M - 30) / 2;
-  [[p.patientSig, `${L2('patSig')}: ${fullName()}`], [v.sig, `${L2('provSigTitle')}: ${cfg.doctorName}`]].forEach(([img, lbl], i) => { const x = M + i * (sw + 30); if (img) doc.addImage(img, 'PNG', x, y, sw, 70); doc.setDrawColor(150); doc.line(x, y + 74, x + sw, y + 74); doc.setFontSize(9); doc.text(lbl, x, y + 88); });
-  y += 100; footer();
+  [[p.patientSig, `${L2('patSig')}: ${fullName()}`], [v.sig, `${L2('provSigTitle')}: ${st.name}${st.role ? ' (' + roleLabel(st.role, lang) + ')' : ''}`]].forEach(([img, lbl], i) => { const x = M + i * (sw + 30); if (img) doc.addImage(img, 'PNG', x, y, sw, 70); doc.setDrawColor(150); doc.line(x, y + 74, x + sw, y + 74); doc.setFontSize(9); doc.text(lbl, x, y + 88); });
+  y += 100;
+  const n = doc.internal.getNumberOfPages(); for (let i = 1; i <= n; i++) { doc.setPage(i); footer(); doc.setFontSize(8); doc.setTextColor(100); doc.text(`${i}/${n}`, W - M, H - 34, { align: 'right' }); doc.setTextColor(0); }
   return doc;
 }
 let lastBlobUrl = null;
@@ -414,7 +508,7 @@ function finishExport(mode) {
 
 // ---------- wipe ----------
 function wipe(next = 'start') {
-  state.patient = newPatient(); state.provider = newProvider(); state.pinBuf = ''; state.msg = null;
+  state.patient = newPatient(); state.provider = newProvider(); state.pinBuf = ''; state.msg = null; state.selStaff = null;
   document.querySelectorAll('canvas').forEach(c => { c.width = c.height = 0; });
   document.querySelectorAll('input[type=file]').forEach(i => (i.value = ''));
   try { sessionStorage.clear(); } catch (e) {}
@@ -431,37 +525,78 @@ const actions = {
   togglePick(el) { toggle(state.provider.pick[el.dataset.sec], el.dataset.val); const y = scrollY; render(); scrollTo(0, y); },
   goto(el) { go(el.dataset.val); },
   clearSig(el) { setPath(el.dataset.val, ''); const y = scrollY; render(); scrollTo(0, y); },
-  useSavedSig() { state.provider.sig = state.config.sig; refreshLock(); },
+  useSavedSig() { const st = curStaff(); if (st) state.provider.sig = st.sig; refreshLock(); },
+  removeLogo() { Object.assign(state.draft, { logo: '', logoW: 0, logoH: 0 }); render(); },
+  clinicNext() {
+    const d = state.draft, editing = !!state.config;
+    if (!d.name.trim()) { state.msg = { type: 'err', text: T('required') + ': ' + T('clinicName') }; return render(); }
+    if (!((editing || d._adminPin) && !d.adminPin && !d.adminPin2) && (!/^\d{4,8}$/.test(d.adminPin) || d.adminPin !== d.adminPin2)) { state.msg = { type: 'err', text: T('pinMismatch') }; return render(); }
+    if (d.adminPin) d._adminPin = d.adminPin;
+    go('staff');
+  },
+  addStaff() { const firstRole = { dental: 'dentist', pt: 'physio', chiro: 'chiro', therapy: 'therapist' }[state.draft.specialty] || 'dentist'; state.staffDraft = Object.assign(newStaff(), { id: 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), role: firstRole }); go('staffEdit'); },
+  editStaff(el) { const st = state.draft.staff.find(x => x.id === el.dataset.val); if (!st) return; state.staffDraft = { ...st, _pin: st.pin, pin: '', pin2: '' }; go('staffEdit'); },
+  delStaff(el) { if (!confirm(T('confirmDel'))) return; state.draft.staff = state.draft.staff.filter(x => x.id !== el.dataset.val); render(); },
+  saveStaff() {
+    const s = state.staffDraft, list = state.draft.staff, i = list.findIndex(x => x.id === s.id);
+    if (!s.name.trim() || !s.role) { state.msg = { type: 'err', text: T('required') + ': ' + T('staffName') }; return render(); }
+    const keep = i >= 0 && !s.pin && !s.pin2;
+    if (!keep && (!/^\d{4,6}$/.test(s.pin) || s.pin !== s.pin2)) { state.msg = { type: 'err', text: T('pinMismatch') }; return render(); }
+    const rec = { id: s.id, name: s.name.trim(), role: s.role, license: s.license.trim(), photo: s.photo, sig: s.sig, pin: keep ? s._pin : s.pin };
+    if (i >= 0) list[i] = rec; else list.push(rec);
+    state.staffDraft = newStaff(); go('staff');
+  },
   async saveSetup() {
     const d = state.draft;
-    if (!d.doctorName.trim() || !d.clinic.trim() || !d.license.trim()) { state.msg = { type: 'err', text: T('required') }; return render(); }
-    if (!/^\d{4,6}$/.test(d.pin) || d.pin !== d.pin2) { state.msg = { type: 'err', text: T('pinMismatch') }; return render(); }
-    state.config = { doctorName: d.doctorName.trim(), clinic: d.clinic.trim(), clinicAddr: d.clinicAddr.trim(), license: d.license.trim(), specialty: d.specialty, pin: d.pin, sig: d.sig,
-      custom: d.customText.split('\n').map(s => s.trim()).filter(Boolean), timeoutMin: Math.max(1, Math.min(30, +d.timeoutMin || 2)) };
+    if (!d.staff.some(isClinician)) { state.msg = { type: 'err', text: T('noStaff') }; return render(); }
+    if (!d._adminPin) { state.msg = { type: 'err', text: T('pinMismatch') }; return go('clinic'); }
+    state.config = { adminPin: d._adminPin, clinic: { name: d.name.trim(), logo: d.logo, logoW: d.logoW, logoH: d.logoH, address: d.address.trim(), phone: d.phone.trim(), specialty: d.specialty,
+      custom: d.customText.split('\n').map(x => x.trim()).filter(Boolean), timeoutMin: Math.max(1, Math.min(30, +d.timeoutMin || 2)) }, staff: d.staff.map(x => ({ ...x })) };
     if (d.saveEnc && crypto.subtle) { await saveSettings(state.config); toast(state.lang === 'es' ? 'Configuración guardada (cifrada)' : 'Setup saved (encrypted)'); }
     else localStorage.removeItem(SETTINGS_KEY);
-    state.draft.pin = state.draft.pin2 = ''; go('start');
+    d.adminPin = d.adminPin2 = d.pass = ''; go('start');
   },
-  forgetSettings() { if (confirm(T('forget') + '?')) { localStorage.removeItem(SETTINGS_KEY); state.pinBuf = ''; go('setup'); } },
+  async exportConfig() {
+    const d = state.draft; if ((d.pass || '').length < 8) { state.msg = { type: 'err', text: T('passShort') }; return render(); }
+    if (!d._adminPin) { state.msg = { type: 'err', text: T('pinMismatch') }; return go('clinic'); }
+    const cfg = { adminPin: d._adminPin, clinic: { name: d.name.trim(), logo: d.logo, logoW: d.logoW, logoH: d.logoH, address: d.address.trim(), phone: d.phone.trim(), specialty: d.specialty, custom: d.customText.split('\n').map(x => x.trim()).filter(Boolean), timeoutMin: Math.max(1, Math.min(30, +d.timeoutMin || 2)) }, staff: d.staff.map(x => ({ ...x })) };
+    const file = await encryptJSON(cfg, d.pass, { kind: 'clinicpad-config', app: window.BRAND || 'ClinicPad', created: new Date().toISOString().slice(0, 10) });
+    download(`${(window.BRAND || 'ClinicPad').replace(/\W+/g, '')}-config-${(d.name || 'clinic').replace(/[^\w]+/g, '-').slice(0, 40)}.cpcfg`, JSON.stringify(file), 'application/json');
+    d.pass = ''; state.msg = { type: 'ok', text: T('exported') }; render();
+  },
+  async importConfig() {
+    const d = state.draft;
+    try { const o = JSON.parse(state.importText); if (o.kind !== 'clinicpad-config') throw new Error('kind'); const c = migrateConfig(await decryptJSON(o, d.importPass || '')); if (!validConfig(c)) throw new Error('shape');
+      configToDraft(c); state.draft.saveEnc = false; state.importText = ''; go('clinic'); state.msg = { type: 'ok', text: T('imported') }; render(); }
+    catch (e) { state.msg = { type: 'err', text: T('importFail') }; render(); }
+  },
+  forgetSettings() { if (confirm(T('forget') + '?')) { localStorage.removeItem(SETTINGS_KEY); state.pinBuf = ''; state.draft = newDraft(); go('clinic'); } },
   settings() { state.pinTarget = 'settings'; state.pinBuf = ''; go('pin'); },
+  pickStaff(el) { state.selStaff = el.dataset.val; state.pinTarget = 'provider'; state.pinBuf = ''; go('pin'); },
   begin() { if (!state.patient.name.trim()) { state.msg = { type: 'err', text: T('startPrompt') }; return render(); } const parts = state.patient.name.trim().split(/\s+/); state.patient.first = parts[0]; state.patient.last = parts.slice(1).join(' '); go('license'); },
   next() { const i = PATIENT_STEPS.indexOf(state.screen); if (state.screen === 'allergies' && !state.patient.hasAllergies) { state.msg = { type: 'err', text: T('hasAllergies') }; return render(); } go(PATIENT_STEPS[i + 1]); },
   addMed() { const m = state.patient.medInput.trim(); if (m) { state.patient.meds.push(m); state.patient.medInput = ''; } render(); document.getElementById('medInput')?.focus(); },
   removeMed(el) { state.patient.meds.splice(+el.dataset.val, 1); render(); },
   finishPatient() { const p = state.patient; if (!p.consent || !p.patientSig) { state.msg = { type: 'err', text: `${T('consCheck')} + ${T('patSig')}` }; return render(); } go('handoff'); },
-  staffAccess() { state.pinTarget = 'provider'; state.pinBuf = ''; go('pin'); },
-  pinDigit(el) { if (state.pinBuf.length < 6) state.pinBuf += el.dataset.val; render(); },
+  staffAccess() { state.pinBuf = ''; state.selStaff = null; const l = state.config.staff.filter(isClinician); if (l.length === 1) return actions.pickStaff({ dataset: { val: l[0].id } }); go('selectStaff'); },
+  pinDigit(el) { if (state.pinBuf.length < 8) state.pinBuf += el.dataset.val; render(); },
   pinDel() { state.pinBuf = state.pinBuf.slice(0, -1); render(); },
   async pinOk() {
     if (state.screen === 'unlock') {
-      try { state.config = await loadSettings(state.pinBuf); Object.assign(state.draft, { doctorName: state.config.doctorName, clinic: state.config.clinic, clinicAddr: state.config.clinicAddr || '', license: state.config.license, specialty: state.config.specialty, sig: state.config.sig, customText: (state.config.custom || []).join('\n'), timeoutMin: state.config.timeoutMin, saveEnc: true }); state.pinBuf = ''; go('start'); }
+      try { state.config = await loadSettings(state.pinBuf); configToDraft(state.config); state.pinBuf = ''; go('start'); }
       catch (e) { state.pinBuf = ''; state.msg = { type: 'err', text: T('badPin') }; render(); }
       return;
     }
-    if (state.pinBuf === state.config.pin) { state.pinBuf = ''; go(state.pinTarget === 'settings' ? 'setup' : 'provider'); }
+    if (state.pinTarget === 'settings') {
+      if (state.pinBuf === state.config.adminPin) { state.pinBuf = ''; configToDraft(state.config); go('clinic'); }
+      else { state.pinBuf = ''; state.msg = { type: 'err', text: T('badPin') }; render(); }
+      return;
+    }
+    const st = state.config.staff.find(x => x.id === state.selStaff);
+    if (st && state.pinBuf === st.pin) { state.pinBuf = ''; state.provider.staffId = st.id; state.provider.spec = null; go('provider'); }
     else { state.pinBuf = ''; state.msg = { type: 'err', text: T('badPin') }; render(); }
   },
-  pinCancel() { state.pinBuf = ''; go(state.pinTarget === 'settings' ? 'start' : 'handoff'); },
+  pinCancel() { state.pinBuf = ''; if (state.pinTarget === 'settings') return go('start'); const many = state.config.staff.filter(isClinician).length > 1; go(many ? 'selectStaff' : 'handoff'); },
   exportPdf() { finishExport('save'); },
   printPdf() { finishExport('print'); },
   cancelVisit() { if (confirm(T('confirmCancel'))) wipe('start'); },
@@ -486,6 +621,13 @@ function render() {
   } else b.hidden = true;
   initSigPads();
   const lf = document.getElementById('licFile'); if (lf) lf.addEventListener('change', () => onLicenseFile(lf));
+  const chipEl = document.getElementById('clinicChip'); const ck = state.config && state.config.clinic;
+  if (chipEl) { chipEl.hidden = !ck; chipEl.innerHTML = ck ? `${ck.logo ? `<img src="${ck.logo}" alt="">` : ''}<span>${esc(ck.name)}</span>` : ''; }
+  const onImg = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('change', async () => { const f = el.files && el.files[0]; el.value = ''; if (!f) return; try { await fn(f); } catch (e) { toast(state.lang === 'es' ? 'No se pudo leer la imagen' : 'Could not read the image'); } const y = scrollY; render(); scrollTo(0, y); }); };
+  onImg('logoFile', async f => { const r = await resizeLogo(f); Object.assign(state.draft, { logo: r.data, logoW: r.w, logoH: r.h }); });
+  onImg('photoCam', async f => { state.staffDraft.photo = await makeAvatar(f); });
+  onImg('photoFile', async f => { state.staffDraft.photo = await makeAvatar(f); });
+  const imf = document.getElementById('importFile'); if (imf) imf.addEventListener('change', async () => { const f = imf.files && imf.files[0]; if (!f) return; state.importText = await f.text(); imf.value = ''; document.getElementById('importName').textContent = '✓ ' + f.name; });
   // keyboard-friendly: focus first field on desktop / reception
   if (state.reception || state.device === 'desktop') { const f = app.querySelector('input[type=text]:not([value]),input[type=text][value=""],textarea,input[type=password]') || app.querySelector('[data-enter]'); if (f && !['provider'].includes(state.screen)) f.focus({ preventScroll: true }); }
 }
@@ -515,7 +657,7 @@ const idleEl = document.getElementById('idle'); const IDLE_WARN = 15;
 ['pointerdown', 'keydown', 'input', 'wheel', 'touchstart'].forEach(ev => document.addEventListener(ev, () => { if (idleEl.hidden) state.lastActivity = Date.now(); }, { passive: true, capture: true }));
 function hideIdle() { idleEl.hidden = true; state.idleCount = 0; }
 setInterval(() => {
-  if (!state.config || ['setup', 'unlock', 'done'].includes(state.screen)) return;
+  if (!state.config || ['clinic', 'staff', 'staffEdit', 'unlock', 'done'].includes(state.screen)) return;
   const hasData = state.screen !== 'start' || state.patient.name;
   if (!hasData) return;
   const limit = qs.get('idleSec') ? +qs.get('idleSec') * 1000 : state.config.timeoutMin * 60000;
@@ -530,6 +672,6 @@ window.addEventListener('pagehide', () => { state.patient = newPatient(); state.
 
 // ---------- boot ----------
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) navigator.serviceWorker.register('sw.js').catch(() => {});
-state.screen = localStorage.getItem(SETTINGS_KEY) && crypto.subtle ? 'unlock' : 'setup';
+state.screen = localStorage.getItem(SETTINGS_KEY) && crypto.subtle ? 'unlock' : 'clinic';
 render();
 })();

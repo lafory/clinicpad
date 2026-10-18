@@ -109,3 +109,45 @@ window.CATALOG = {
     }
   }
 };
+
+// ---- Clinic profile + staff profiles (v2) ----
+Object.assign(window.I18N.es, {
+  clLocked: 'Exportar e imprimir bloqueados: puntos pendientes: {n}',
+  clinicTitle: 'Perfil de la clínica', clinicIntro: 'Se configura una vez. Son datos de la clínica, no de pacientes. El nombre y el logo aparecen en la pantalla y en cada página del PDF.',
+  clinicName: 'Nombre de la clínica', clinicAddr: 'Dirección', clinicPhone: 'Teléfono de la clínica', logo: 'Logo de la clínica', logoUpload: 'Subir logo', logoHint: 'Imagen PNG/JPG. Se reduce en la tablet antes de usarla.', logoRemove: 'Quitar logo',
+  adminPin: 'PIN de administrador (4–8 dígitos)', adminPin2: 'Repita el PIN de administrador', adminPinHint: 'Para abrir Ajustes y desbloquear la configuración guardada. Recomendado: 6 o más dígitos.',
+  specialty: 'Especialidad principal de la clínica', continueStaff: 'Continuar: personal',
+  staffTitle: 'Personal de la clínica', staffIntro: 'Cada persona tiene su foto, profesión, licencia, firma y PIN. En el pase al proveedor se elige quién atiende.',
+  addStaff: 'Agregar persona', editStaff: 'Editar', delStaff: 'Eliminar', confirmDel: '¿Eliminar a esta persona del personal?', noStaff: 'Agregue al menos un proveedor (no recepción) para empezar.',
+  staffEditTitle: 'Perfil del personal', staffName: 'Nombre completo', role: 'Profesión / rol', photo: 'Foto de perfil', photoTake: 'Tomar o subir foto', photoHint: 'Se recorta en círculo y se reduce a 160 px.', staffLicense: 'Número de licencia (si aplica)',
+  staffSig: 'Firma (se puede reutilizar en cada visita)', staffPin: 'PIN personal (4–6 dígitos)', staffPin2: 'Repita el PIN', saveStaff: 'Guardar persona', backToClinic: '← Perfil de la clínica',
+  storageTitle: 'Guardar y copiar la configuración', saveEnc: 'Recordar esta configuración en la tablet (cifrada con AES-GCM usando el PIN de administrador). Nunca incluye datos de pacientes.',
+  exportTitle: 'Copiar a otra tablet', exportIntro: 'Exporte un archivo cifrado con la configuración de la clínica y el personal (sin datos de pacientes) e impórtelo en otra tablet.',
+  passphrase: 'Contraseña del archivo (mínimo 8 caracteres)', exportBtn: 'Exportar archivo cifrado', importBtn: 'Importar archivo cifrado', importFile: 'Archivo de configuración (.cpcfg)',
+  exported: 'Archivo exportado. Guárdelo en un lugar seguro.', imported: 'Configuración importada. Revise y guarde.', importFail: 'No se pudo importar: contraseña incorrecta o archivo inválido.', passShort: 'La contraseña debe tener al menos 8 caracteres.',
+  selectStaffTitle: '¿Quién atiende a este paciente?', selectStaffIntro: 'Toque su foto y escriba su PIN.', pinFor: 'PIN de', unlockIntro: 'Ingrese el PIN de administrador para desbloquearla.', staffSettings: 'Ajustes (administrador)',
+  treatingProvider: 'Proveedor que atiende', clinicSetupHint: 'O importe la configuración desde otra tablet:'
+});
+Object.assign(window.I18N.en, {
+  clLocked: 'Export and print locked: items left: {n}',
+  clinicTitle: 'Clinic profile', clinicIntro: 'Set up once. This is clinic information, not patient data. The name and logo appear on screen and on every PDF page.',
+  clinicName: 'Clinic name', clinicAddr: 'Address', clinicPhone: 'Clinic phone', logo: 'Clinic logo', logoUpload: 'Upload logo', logoHint: 'PNG/JPG image. It is resized on the tablet before use.', logoRemove: 'Remove logo',
+  adminPin: 'Admin PIN (4–8 digits)', adminPin2: 'Repeat admin PIN', adminPinHint: 'Opens Settings and unlocks the saved setup. Recommended: 6+ digits.',
+  specialty: 'Clinic primary specialty', continueStaff: 'Continue: staff',
+  staffTitle: 'Clinic staff', staffIntro: 'Each person has a photo, profession, license, signature and PIN. At the provider handoff you pick who is treating.',
+  addStaff: 'Add person', editStaff: 'Edit', delStaff: 'Delete', confirmDel: 'Remove this person from the staff?', noStaff: 'Add at least one provider (not front desk) to start.',
+  staffEditTitle: 'Staff profile', staffName: 'Full name', role: 'Profession / role', photo: 'Profile photo', photoTake: 'Take or upload photo', photoHint: 'Cropped to a circle and resized to 160 px.', staffLicense: 'License number (if applicable)',
+  staffSig: 'Signature (can be reused each visit)', staffPin: 'Personal PIN (4–6 digits)', staffPin2: 'Repeat PIN', saveStaff: 'Save person', backToClinic: '← Clinic profile',
+  storageTitle: 'Save and copy the setup', saveEnc: 'Remember this setup on the tablet (AES-GCM encrypted with the admin PIN). Never includes patient data.',
+  exportTitle: 'Copy to another tablet', exportIntro: 'Export an encrypted file with the clinic and staff setup (no patient data) and import it on another tablet.',
+  passphrase: 'File password (at least 8 characters)', exportBtn: 'Export encrypted file', importBtn: 'Import encrypted file', importFile: 'Setup file (.cpcfg)',
+  exported: 'File exported. Keep it somewhere safe.', imported: 'Setup imported. Review and save.', importFail: 'Import failed: wrong password or invalid file.', passShort: 'The password must be at least 8 characters.',
+  selectStaffTitle: 'Who is treating this patient?', selectStaffIntro: 'Tap your photo and enter your PIN.', pinFor: 'PIN for', unlockIntro: 'Enter the admin PIN to unlock it.', staffSettings: 'Settings (admin)',
+  treatingProvider: 'Treating provider', clinicSetupHint: 'Or import the setup from another tablet:'
+});
+window.CATALOG.roles = {
+  dentist: { es: 'Dentista', en: 'Dentist', spec: 'dental' }, hygienist: { es: 'Higienista dental', en: 'Dental hygienist', spec: 'dental' },
+  physio: { es: 'Fisioterapeuta', en: 'Physical therapist', spec: 'pt' }, chiro: { es: 'Quiropráctico/a', en: 'Chiropractor', spec: 'chiro' },
+  therapist: { es: 'Terapeuta', en: 'Therapist', spec: 'therapy' }, physician: { es: 'Médico/a', en: 'Physician', spec: null },
+  assistant: { es: 'Asistente clínico', en: 'Clinical assistant', spec: null }, reception: { es: 'Recepción', en: 'Front desk', spec: null }
+};
