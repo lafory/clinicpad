@@ -1,8 +1,13 @@
 # ClinicPad landing page (static)
 - Rename the product: edit `js/config.js` (`BRAND`).
 - Texts EN/ES: `js/i18n.js`. UI (checklist demo, form, reveals): `js/ui.js`.
-- Backgrounds: real photo plates (lobby, hallway, river) made from the owner's mockups: UI baked into the mockups was removed with LaMa inpainting (`tools/masks.py`, `tools/lama.py`, `tools/lama2.py`), then encoded to AVIF + WebP at 960/1280/1920 px (`tools/pack-plates.py`). They are stored as base64 text in `assets/plates/` (the publishing API is text-only); `js/plates.js` picks one format and width per device, and drives the scroll story (gentle zoom capped at ~1.15x, a blurred bloom crossfade from the lobby doors into the hallway photo, hallway walk, river crossfade); every background pixel comes from the owner's three photos.
-- 3D: `src/scene.src.js` (+ `src/screens.js`) → `js/scene.js` via `tools/build.sh` (esbuild, three external). It draws only the tablet + pencil (transparent canvas with a floor shadow) and a water-shimmer shader over the river plate.
-- URL flags: `?lite` (no shadows, no water shimmer), `?no3d` (photo plates + CSS tablet), `?lang=es`, `?shot` (deterministic frames for screenshots).
-- `assets/*.pack.json` are from the previous all-3D version and are no longer loaded.
+- Background: one continuous 3D camera walk (lobby → glass doors → hallway → garden window → river) built only from the owner's three photos, using camera-projection mapping (matte-painting style). Each photo is projected from its own camera onto simple proxy geometry (floor, walls, door leaves, lathe pots, plant cards, the reception desk, the river bank). From that camera the frame is exactly the photo; when the camera moves you get real parallax.
+  - The sliding doors are the lobby photo's own door pixels on two leaves that slide into the wall.
+  - Areas the photos never saw (behind plants, pots and the desk) were filled with LaMa inpainting from the same photo (`tools/proj-masks.py`, `tools/proj-inpaint.py`). The river photo was also outpainted at the edges so the camera can arrive from behind its viewpoint.
+  - Textures were upscaled 2x with Real-ESRGAN for desktop (`tools/upscale.py`) and packed as base64 WebP JSON (`tools/pack-photo.py` → `assets/photo-*-{hd,sd}.pack.json`). Mobile and `?lite` load the native-resolution `sd` packs.
+  - Water: a mirror reflection (three.js Reflector), flowing normal maps (tileable, generated), Fresnel, sun glints and foam around the rocks. Its base colour is the photo's own water, refracted through the moving surface.
+- The tablet + pencil (`src/scene.src.js`, `src/screens.js`) are the only CG objects. They are lit by an environment built from the lobby photo. Build `js/scene.js` with `tools/build.sh` (esbuild, three external).
+- Tests: `node test/shoot-walk.mjs [url] [--mobile]` saves `shots/walk-*.png` every 10% of the scroll, plus door closed/half/open and window frames.
+- URL flags: `?lite` (no mirror pass, sd textures), `?no3d` (CSS fallback), `?lang=es`, `?shot` (deterministic frames for screenshots).
+- `assets/*.pack.json` without the `photo-` prefix, `assets/plates/` and `js/plates.js` are from earlier versions and are no longer loaded.
 - `app/` is the separate prototype; it is not part of the landing build.
