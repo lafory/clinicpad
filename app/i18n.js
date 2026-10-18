@@ -151,3 +151,40 @@ window.CATALOG.roles = {
   therapist: { es: 'Terapeuta', en: 'Therapist', spec: 'therapy' }, physician: { es: 'Médico/a', en: 'Physician', spec: null },
   assistant: { es: 'Asistente clínico', en: 'Clinical assistant', spec: null }, reception: { es: 'Recepción', en: 'Front desk', spec: null }
 };
+// v3: export UX (iOS-safe) strings
+Object.assign(I18N.es, {
+  lockHint: 'Toque «Exportar» para ver qué falta.',
+  missingToast: 'Falta completar {n} punto(s): están marcados en rojo.',
+  expTitle: 'PDF de la visita', expOkTitle: 'PDF listo', expBadTitle: 'No se pudo completar',
+  exp_sharing: 'Elija dónde guardar o enviar el PDF (Archivos, AirDrop, Mail…).',
+  exp_shared: 'PDF compartido o guardado correctamente.',
+  exp_cancelled: 'Se canceló el menú de compartir. El PDF sigue disponible abajo.',
+  exp_shareFail: 'No se pudo abrir el menú de compartir. Use «Descargar» o «Abrir PDF».',
+  exp_downloaded: 'PDF descargado. En iPhone/iPad búsquelo en Archivos › Descargas (o toque el ícono ⬇️ de Safari).',
+  exp_opened: 'PDF abierto en otra pestaña.',
+  exp_printOpened: 'PDF abierto en otra pestaña para imprimir. Use el botón Compartir › Imprimir si no aparece el diálogo.',
+  exp_popupBlocked: 'El navegador bloqueó la pestaña nueva. Use «Descargar», «Compartir» o «Abrir aquí».',
+  exp_error: 'Error al generar el PDF. Los datos de la visita NO se borraron.',
+  expShare: 'Compartir / Guardar en Archivos', expDownload: 'Descargar', expOpen: 'Abrir PDF', expOpenHere: 'Abrir aquí',
+  expOpenHereConfirm: 'Se abrirá el PDF en esta misma pestaña y la visita se cerrará y borrará de la app. Guarde o comparta el PDF desde el visor. ¿Continuar?',
+  expKeep: 'Los datos de la visita se mantienen hasta que toque «Listo» (o por inactividad).',
+  expBack: 'Volver a la visita', expDone: 'Listo: borrar visita',
+});
+Object.assign(I18N.en, {
+  lockHint: 'Tap "Export" to see what is missing.',
+  missingToast: '{n} item(s) still missing: they are highlighted in red.',
+  expTitle: 'Visit PDF', expOkTitle: 'PDF ready', expBadTitle: 'Could not complete',
+  exp_sharing: 'Choose where to save or send the PDF (Files, AirDrop, Mail…).',
+  exp_shared: 'PDF shared or saved successfully.',
+  exp_cancelled: 'The share sheet was cancelled. The PDF is still available below.',
+  exp_shareFail: 'The share sheet could not open. Use "Download" or "Open PDF".',
+  exp_downloaded: 'PDF downloaded. On iPhone/iPad find it in Files › Downloads (or tap the ⬇️ icon in Safari).',
+  exp_opened: 'PDF opened in another tab.',
+  exp_printOpened: 'PDF opened in another tab for printing. Use Share › Print if no dialog appears.',
+  exp_popupBlocked: 'The browser blocked the new tab. Use "Download", "Share" or "Open here".',
+  exp_error: 'Error generating the PDF. The visit data was NOT erased.',
+  expShare: 'Share / Save to Files', expDownload: 'Download', expOpen: 'Open PDF', expOpenHere: 'Open here',
+  expOpenHereConfirm: 'The PDF will open in this same tab and the visit will be closed and erased from the app. Save or share the PDF from the viewer. Continue?',
+  expKeep: 'Visit data stays until you tap "Done" (or the idle timeout).',
+  expBack: 'Back to visit', expDone: 'Done: erase visit',
+});

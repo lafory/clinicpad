@@ -34,7 +34,7 @@ const newProvider = () => ({
   bpSys: '', bpDia: '', pulse: '', temp: '', pain: null,
   pick: { findings: [], diagnosis: [], treatment: [], medicines: [] },
   notes: { findings: '', diagnosis: '', treatment: '', medicines: '' },
-  check: {}, sig: '', pdfLang: null, spec: null, staffId: null
+  check: {}, sig: '', pdfLang: null, spec: null, staffId: null, showMissing: false
 });
 const newDraft = () => ({ name: '', logo: '', logoW: 0, logoH: 0, address: '', phone: '', specialty: 'dental', customText: '', timeoutMin: 2, adminPin: '', adminPin2: '', saveEnc: false, staff: [], pass: '', importPass: '' });
 const newStaff = () => ({ id: '', name: '', role: 'dentist', license: '', photo: '', sig: '', pin: '', pin2: '' });
@@ -234,13 +234,13 @@ const screens = {
       <div class="card"><div class="row between"><h2>${state.lang === 'es' ? 'Evaluación y plan' : 'Assessment and plan'}</h2>
         <div class="tabs"><span class="small">${T('quickFor')}</span>${Object.keys(C.specialties).map(k => chip(spec === k, cat('specialties', k), 'setVal', k).replace('data-val', 'data-path="provider.spec" data-val')).join('')}</div></div>${sections}</div>
       <div class="card" id="checklistCard"><h2>${T('checklist')}</h2>
-        ${items.map(i => `<label class="check ${v.check[i.key] ? 'done' : ''}"><input type="checkbox" data-bind="provider.check.${i.key}" data-rerender="1" ${v.check[i.key] ? 'checked' : ''}><span>${esc(i.label)}${i.hint ? `<span class="hint ${i.flag ? 'flag' : ''}">${esc(i.hint)}</span>` : ''}</span></label>`).join('')}
-        <h3>${T('provSigTitle')}</h3>${st.sig ? `<button class="btn ghost" data-action="useSavedSig" style="margin-bottom:10px">✍️ ${T('useSaved')}</button>` : ''}${sigPad('provider.sig')}
-        <div id="lockbar" class="lockbar ${ready ? 'open' : 'locked'}">${ready ? '🔓 ' + T('clUnlocked') : '🔒 ' + T('clLocked').replace('{n}', left) + (v.sig ? '' : ' · ' + T('sigMissing'))}</div>
+        ${items.map(i => `<label class="check ${v.check[i.key] ? 'done' : (v.showMissing ? 'missing' : '')}" data-key="${i.key}"><input type="checkbox" data-bind="provider.check.${i.key}" data-rerender="1" ${v.check[i.key] ? 'checked' : ''}><span>${esc(i.label)}${i.hint ? `<span class="hint ${i.flag ? 'flag' : ''}">${esc(i.hint)}</span>` : ''}</span></label>`).join('')}
+        <h3>${T('provSigTitle')}</h3>${st.sig ? `<button class="btn ghost" data-action="useSavedSig" style="margin-bottom:10px">✍️ ${T('useSaved')}</button>` : ''}<div id="provSigWrap" class="${!v.sig && v.showMissing ? 'missing-sig' : ''}">${sigPad('provider.sig')}</div>
+        <div id="lockbar" class="lockbar ${ready ? 'open' : 'locked'}" role="status">${ready ? '🔓 ' + T('clUnlocked') : `<div>🔒 ${T('clLocked').replace('{n}', left)}${v.sig ? '' : ' · ' + T('sigMissing')}${v.showMissing ? `<ul class="missing-list">${items.filter(i => !v.check[i.key]).map(i => `<li>${esc(i.label)}</li>`).join('')}${v.sig ? '' : `<li>${T('sigMissing')}</li>`}</ul>` : `<div class="small">${T('lockHint')}</div>`}</div>`}</div>
         <label class="f">${T('pdfLang')}</label><div class="chips">${chip(lang === 'es', 'Español', 'setVal', 'es').replace('data-val', 'data-path="provider.pdfLang" data-val')}${chip(lang === 'en', 'English', 'setVal', 'en').replace('data-val', 'data-path="provider.pdfLang" data-val')}</div>
         <div class="nav"><button class="btn danger" data-action="cancelVisit">🗑️ ${T('cancelVisit')}</button>
-          <div class="row"><button class="btn ghost xl" id="printBtn" data-action="printPdf" ${ready ? '' : 'disabled'}>${ready ? '' : '<span class="lock">🔒</span>'}🖨️ ${T('printPdf')}</button>
-          <button class="btn primary xl" id="exportBtn" data-action="exportPdf" ${ready ? '' : 'disabled'}>${ready ? '' : '<span class="lock">🔒</span>'}📄 ${T('exportPdf')}</button></div></div></div>`;
+          <div class="row"><button class="btn ghost xl ${ready ? '' : 'is-locked'}" id="printBtn" data-action="printPdf" data-locked="${!ready}" aria-describedby="lockbar">${ready ? '' : '<span class="lock">🔒</span>'}🖨️ ${T('printPdf')}</button>
+          <button class="btn primary xl ${ready ? '' : 'is-locked'}" id="exportBtn" data-action="exportPdf" data-locked="${!ready}" aria-describedby="lockbar">${ready ? '' : '<span class="lock">🔒</span>'}📄 ${T('exportPdf')}</button></div></div></div>`;
   },
   done() {
     return `<div class="card hero"><div style="font-size:64px">🧾</div><div class="big">${T('doneTitle')}</div><p class="lead" style="font-size:20px">${T('doneText')}</p>
@@ -342,7 +342,7 @@ function initSigPads() {
     cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
   });
 }
-function refreshLock() { if (state.screen !== 'provider') return; const y = scrollY; render(); scrollTo(0, y); }
+function refreshLock() { if (isReady()) state.provider.showMissing = false; if (state.screen !== 'provider') return; const y = scrollY; render(); scrollTo(0, y); }
 
 // ---------- license (PDF417 / AAMVA) ----------
 function parseAAMVA(raw) {
@@ -442,18 +442,18 @@ function importBlock() {
 
 // ---------- PDF ----------
 function buildPdf(lang) {
-  const { jsPDF } = window.jspdf; const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const { jsPDF } = window.jspdf; const doc = new jsPDF({ unit: 'pt', format: 'letter', compress: true });
   const p = state.patient, v = state.provider, cfg = state.config, L2 = k => TL(lang, k);
   const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 46; let y = M;
   const st = curStaff() || { name: '', role: '', license: '', photo: '' }; const k = cfg.clinic; const now = new Date();
   const header = () => {
     let x = M; const top = 30;
-    if (k.logo) { const ratio = (k.logoW && k.logoH) ? k.logoW / k.logoH : 1, lw = Math.min(130, 42 * ratio), lh = lw / ratio; try { doc.addImage(k.logo, 'PNG', M, top + (42 - lh) / 2, lw, lh); x = M + lw + 10; } catch (e) {} }
+    if (k.logo) { const ratio = (k.logoW && k.logoH) ? k.logoW / k.logoH : 1, lw = Math.min(130, 42 * ratio), lh = lw / ratio; try { doc.addImage(k.logo, 'PNG', M, top + (42 - lh) / 2, lw, lh, 'cp_logo', 'FAST'); x = M + lw + 10; } catch (e) {} }
     const avail = W - M - 190 - x, nm = k.name || 'Clinic'; let fz = 15; doc.setTextColor(11, 37, 64); doc.setFont('helvetica', 'bold'); doc.setFontSize(fz);
     while (doc.getTextWidth(nm) > avail && fz > 10.5) { fz -= 0.5; doc.setFontSize(fz); }
     const nl = doc.splitTextToSize(nm, avail).slice(0, 2); doc.text(nl, x, top + 15); const subY = top + 15 + nl.length * fz * 0.95 + 1;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(80); const sub = [k.address, k.phone].filter(Boolean).join(' · '); if (sub) doc.text(doc.splitTextToSize(sub, avail).slice(0, nl.length > 1 ? 1 : 2), x, subY);
-    const ps = 42, px = W - M - ps; if (st.photo) { try { doc.addImage(st.photo, 'PNG', px, top, ps, ps); } catch (e) {} }
+    const ps = 42, px = W - M - ps; if (st.photo) { try { doc.addImage(st.photo, 'PNG', px, top, ps, ps, 'cp_photo', 'FAST'); } catch (e) {} }
     const tx = st.photo ? px - 8 : W - M; doc.setTextColor(11, 37, 64); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text(st.name || '', tx, top + 12, { align: 'right' });
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(80); doc.text(st.role ? roleLabel(st.role, lang) : '', tx, top + 24, { align: 'right' }); if (st.license) doc.text(`${lang === 'es' ? 'Licencia' : 'License'}: ${st.license}`, tx, top + 35, { align: 'right' });
     doc.setTextColor(0); doc.setDrawColor(15, 163, 163); doc.setLineWidth(1.5); doc.line(M, top + 50, W - M, top + 50);
@@ -492,23 +492,69 @@ function buildPdf(lang) {
   newPage(); h2(L2('consTitle')); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); const ct = doc.splitTextToSize(L2('consText'), W - 2 * M); ensure(ct.length * 12); doc.text(ct, M, y); y += ct.length * 12 + 6;
   line(lang === 'es' ? 'Consentimiento' : 'Consent', p.consent ? (lang === 'es' ? 'Aceptado por el paciente en la tablet' : 'Accepted by patient on tablet') : '');
   ensure(110); const sw = (W - 2 * M - 30) / 2;
-  [[p.patientSig, `${L2('patSig')}: ${fullName()}`], [v.sig, `${L2('provSigTitle')}: ${st.name}${st.role ? ' (' + roleLabel(st.role, lang) + ')' : ''}`]].forEach(([img, lbl], i) => { const x = M + i * (sw + 30); if (img) doc.addImage(img, 'PNG', x, y, sw, 70); doc.setDrawColor(150); doc.line(x, y + 74, x + sw, y + 74); doc.setFontSize(9); doc.text(lbl, x, y + 88); });
+  [[p.patientSig, `${L2('patSig')}: ${fullName()}`], [v.sig, `${L2('provSigTitle')}: ${st.name}${st.role ? ' (' + roleLabel(st.role, lang) + ')' : ''}`]].forEach(([img, lbl], i) => { const x = M + i * (sw + 30); if (img) doc.addImage(img, 'PNG', x, y, sw, 70, 'cp_sig' + i, 'FAST'); doc.setDrawColor(150); doc.line(x, y + 74, x + sw, y + 74); doc.setFontSize(9); doc.text(lbl, x, y + 88); });
   y += 100;
   const n = doc.internal.getNumberOfPages(); for (let i = 1; i <= n; i++) { doc.setPage(i); footer(); doc.setFontSize(8); doc.setTextColor(100); doc.text(`${i}/${n}`, W - M, H - 34, { align: 'right' }); doc.setTextColor(0); }
   return doc;
 }
-let lastBlobUrl = null;
-function finishExport(mode) {
-  const lang = state.provider.pdfLang || state.lang; const doc = buildPdf(lang);
-  const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
-  if (mode === 'print') { doc.autoPrint(); lastBlobUrl = doc.output('bloburl'); const w = window.open(lastBlobUrl, '_blank'); if (!w) doc.save(`${(window.BRAND || 'ClinicPad').replace(/\W+/g, '')}_${stamp}.pdf`); setTimeout(() => { if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl); lastBlobUrl = null; }, 120000); }
-  else doc.save(`${(window.BRAND || 'ClinicPad').replace(/\W+/g, '')}_${lang}_${stamp}.pdf`);
-  wipe('done');
+// ---------- export / print (iOS-safe: share sheet, download, open; wipe only after the user confirms) ----------
+const isReady = () => { const v = state.provider; return checklistItems().every(i => v.check[i.key]) && !!v.sig; };
+let exp = null; // { url, name, file, lang }
+function explainMissing() {
+  state.provider.showMissing = true; render();
+  const first = document.querySelector('#checklistCard .check.missing') || document.getElementById('provSigWrap');
+  if (first) { first.scrollIntoView({ behavior: 'smooth', block: 'center' }); first.classList.add('pulse'); setTimeout(() => first.classList.remove('pulse'), 1600); }
+  const n = checklistItems().filter(i => !state.provider.check[i.key]).length + (state.provider.sig ? 0 : 1);
+  toast(T('missingToast').replace('{n}', n), 4200);
 }
+function pdfName(lang) { return `${(window.BRAND || 'ClinicPad').replace(/\W+/g, '')}_${lang}_${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')}.pdf`; }
+function makePdf(autoPrint) {
+  const lang = state.provider.pdfLang || state.lang; const doc = buildPdf(lang); if (autoPrint) doc.autoPrint();
+  const blob = doc.output('blob'); const name = pdfName(lang);
+  if (exp && exp.url) URL.revokeObjectURL(exp.url);
+  let file = null; try { file = new File([blob], name, { type: 'application/pdf' }); } catch (e) {}
+  exp = { url: URL.createObjectURL(blob), name, file, lang, size: blob.size }; return exp;
+}
+const canShareFile = () => !!(exp && exp.file && navigator.share && navigator.canShare && (() => { try { return navigator.canShare({ files: [exp.file] }); } catch (e) { return false; } })());
+function downloadPdf() { const a = document.createElement('a'); a.href = exp.url; a.download = exp.name; a.rel = 'noopener'; document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 1000); }
+function sharePdf() {
+  return navigator.share({ files: [exp.file], title: exp.name }).then(() => showExport('shared'))
+    .catch(e => showExport(e && e.name === 'AbortError' ? 'cancelled' : 'shareFail', e));
+}
+function openPdfTab() { const w = window.open(exp.url, '_blank'); if (!w) showExport('popupBlocked'); else showExport('opened'); }
+function startExport(mode) {
+  if (!isReady()) return explainMissing();
+  try { makePdf(mode === 'print'); } catch (e) { console.warn(e); return showExport('error', e); }
+  const mobile = state.device !== 'desktop';
+  if (mode === 'print') { const w = window.open(exp.url, '_blank'); return showExport(w ? 'printOpened' : 'popupBlocked'); }
+  if (mobile && canShareFile()) { showExport('sharing'); return sharePdf(); } // must stay inside the tap (user gesture)
+  try { downloadPdf(); showExport('downloaded'); } catch (e) { showExport('error', e); }
+}
+function showExport(status, err) {
+  const ov = document.getElementById('exportPanel'); if (!ov) return;
+  const ok = ['shared', 'downloaded', 'opened', 'printOpened'].includes(status), bad = ['error', 'shareFail', 'popupBlocked'].includes(status);
+  const msg = T('exp_' + status) + (err && status === 'error' ? ` (${esc(err.message || err)})` : '');
+  const kb = exp ? Math.round(exp.size / 1024) : 0;
+  ov.innerHTML = `<div class="modal export-modal" role="dialog" aria-modal="true" aria-labelledby="expTitle">
+    <div class="exp-ico">${ok ? '✅' : bad ? '⚠️' : status === 'sharing' ? '⏳' : 'ℹ️'}</div><h2 id="expTitle">${ok ? T('expOkTitle') : bad ? T('expBadTitle') : T('expTitle')}</h2>
+    <p class="msg ${ok ? 'ok' : bad ? 'err' : 'info'}" id="expStatus" data-status="${status}">${msg}</p>
+    ${exp ? `<p class="small">📄 ${esc(exp.name)} · ${kb} KB</p>` : ''}
+    <div class="exp-actions">
+      ${exp && canShareFile() ? `<button class="btn ghost" data-action="expShare">📤 ${T('expShare')}</button>` : ''}
+      ${exp ? `<button class="btn ghost" data-action="expDownload">⬇️ ${T('expDownload')}</button><button class="btn ghost" data-action="expOpen">🔎 ${T('expOpen')}</button>` : ''}
+      ${exp && (status === 'popupBlocked' || state.device !== 'desktop') ? `<button class="btn ghost" data-action="expOpenHere">↗️ ${T('expOpenHere')}</button>` : ''}
+    </div>
+    <p class="small">${T('expKeep')}</p>
+    <div class="exp-final"><button class="btn ghost xl" data-action="expBack">← ${T('expBack')}</button><button class="btn primary xl" id="expDone" data-action="expDone">✓ ${T('expDone')}</button></div></div>`;
+  const tEl = document.getElementById('toast'); if (tEl) tEl.hidden = true;
+  ov.hidden = false; document.getElementById('expDone')?.focus({ preventScroll: true });
+}
+function hideExport() { const ov = document.getElementById('exportPanel'); if (ov) { ov.hidden = true; ov.innerHTML = ''; } }
 
 // ---------- wipe ----------
 function wipe(next = 'start') {
   state.patient = newPatient(); state.provider = newProvider(); state.pinBuf = ''; state.msg = null; state.selStaff = null;
+  hideExport(); if (exp && exp.url) setTimeout(((u) => () => URL.revokeObjectURL(u))(exp.url), 60000); exp = null;
   document.querySelectorAll('canvas').forEach(c => { c.width = c.height = 0; });
   document.querySelectorAll('input[type=file]').forEach(i => (i.value = ''));
   try { sessionStorage.clear(); } catch (e) {}
@@ -597,8 +643,14 @@ const actions = {
     else { state.pinBuf = ''; state.msg = { type: 'err', text: T('badPin') }; render(); }
   },
   pinCancel() { state.pinBuf = ''; if (state.pinTarget === 'settings') return go('start'); const many = state.config.staff.filter(isClinician).length > 1; go(many ? 'selectStaff' : 'handoff'); },
-  exportPdf() { finishExport('save'); },
-  printPdf() { finishExport('print'); },
+  exportPdf() { startExport('save'); },
+  printPdf() { startExport('print'); },
+  expShare() { if (canShareFile()) sharePdf(); },
+  expDownload() { try { downloadPdf(); showExport('downloaded'); } catch (e) { showExport('error', e); } },
+  expOpen() { openPdfTab(); },
+  expOpenHere() { if (confirm(T('expOpenHereConfirm'))) { const u = exp.url; state.patient = newPatient(); state.provider = newProvider(); location.href = u; } },
+  expBack() { hideExport(); },
+  expDone() { wipe('done'); },
   cancelVisit() { if (confirm(T('confirmCancel'))) wipe('start'); },
   nextPatient() { go('start'); },
   idleKeep() { hideIdle(); state.lastActivity = Date.now(); }
@@ -619,7 +671,7 @@ function render() {
     else if (p.hasAllergies === 'no') { b.className = 'allergy-banner ok'; b.innerHTML = `<span class="ico">✓</span><span>${T('noAllergies')}</span>`; }
     else { b.className = 'allergy-banner warn'; b.innerHTML = `<span class="ico">⚠️</span><span>${T('allergyUnknown')}</span>`; }
   } else b.hidden = true;
-  initSigPads();
+  initSigPads(); syncBars();
   const lf = document.getElementById('licFile'); if (lf) lf.addEventListener('change', () => onLicenseFile(lf));
   const chipEl = document.getElementById('clinicChip'); const ck = state.config && state.config.clinic;
   if (chipEl) { chipEl.hidden = !ck; chipEl.innerHTML = ck ? `${ck.logo ? `<img src="${ck.logo}" alt="">` : ''}<span>${esc(ck.name)}</span>` : ''; }
@@ -670,8 +722,13 @@ setInterval(() => {
 }, 500);
 window.addEventListener('pagehide', () => { state.patient = newPatient(); state.provider = newProvider(); });
 
+// ---------- sticky offsets (topbar + allergy banner never cover content) ----------
+function syncBars() { const tb = document.querySelector('.topbar'), ab = document.getElementById('allergyBanner'); const th = tb ? tb.offsetHeight : 0, bh = ab && !ab.hidden ? ab.offsetHeight : 0;
+  document.documentElement.style.setProperty('--topbar-h', th + 'px'); document.documentElement.style.setProperty('--banner-h', bh + 'px'); }
+if (window.ResizeObserver) { const ro = new ResizeObserver(syncBars); ro.observe(document.querySelector('.topbar')); ro.observe(document.getElementById('allergyBanner')); }
+window.addEventListener('resize', syncBars);
 // ---------- boot ----------
-if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});
 state.screen = localStorage.getItem(SETTINGS_KEY) && crypto.subtle ? 'unlock' : 'clinic';
 render();
 })();
