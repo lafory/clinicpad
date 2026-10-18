@@ -160,5 +160,51 @@ body[data-device=phone] .proto{display:none}body[data-device=phone] .phone-note{
 .prov-tag{display:inline-flex;align-items:center}
 .photo-row{align-items:flex-start;gap:20px}
 .import-box{margin-top:18px;padding:14px;border-radius:16px;background:#f3fafb;border:1px dashed #b8d3d6}
-body[data-device=phone] .clinic-chip{display:none}
 .staff-grid{display:flex;flex-wrap:wrap;justify-content:center}.staff-tile{width:200px}
+/* ---- v3: topbar docked at the very top (no floating pill), clinic identity first ---- */
+:root{--topbar-h:64px;--banner-h:0px}
+html{scroll-padding-top:calc(var(--topbar-h) + var(--banner-h) + 12px)}
+.topbar{position:sticky;top:0;margin:0;width:100%;border-radius:0;padding:8px max(16px,env(safe-area-inset-right)) 8px max(16px,env(safe-area-inset-left));padding-top:max(8px,env(safe-area-inset-top));
+  background:rgba(255,255,255,.97);border:0;border-bottom:1px solid rgba(11,37,64,.1);box-shadow:0 4px 16px -10px rgba(11,37,64,.35);gap:12px;min-height:64px;z-index:30}
+.topbar .brand{gap:8px;font-size:17px;color:var(--mut)}
+.topbar .brand .proto{font-size:12px}
+.clinic-chip{margin:0 auto 0 4px;padding:0;background:none;box-shadow:none;gap:12px;max-width:none;flex:1 1 auto;font-size:20px;font-weight:800}
+.clinic-chip img{height:44px;max-width:150px;border-radius:8px;background:#fff}
+.clinic-chip span{min-width:0}
+.topbar:has(.clinic-chip:not([hidden])) .brand [data-brand]{font-size:14px;font-weight:700}
+.allergy-banner{top:var(--topbar-h);margin:0;width:100%;border-radius:0}
+body[data-device=phone] .topbar{border-radius:0;padding-left:10px;padding-right:10px;min-height:56px;gap:8px}
+body[data-device=phone] .topbar .brand [data-brand],body[data-device=phone] .topbar .proto{display:none}
+body[data-device=phone] .topbar .logo-mark{width:24px;height:24px;border-radius:7px}
+body[data-device=phone] .clinic-chip{font-size:16px;gap:8px}
+body[data-device=phone] .clinic-chip img{height:36px;max-width:96px}
+body[data-device=phone] .topbar .btn{min-height:40px;padding:6px 12px;font-size:14px}
+body[data-device=phone] .allergy-banner{font-size:16px;padding:8px 12px}
+/* phone: actions stack full width, primary first; nothing fixed over them */
+body[data-device=phone] .nav{flex-direction:column;align-items:stretch}
+body[data-device=phone] .nav .row{flex-direction:column;align-items:stretch;width:100%}
+body[data-device=phone] .nav .btn{width:100%;min-height:58px}
+body[data-device=phone] .nav > .btn.danger{order:2}
+body[data-device=phone] #printBtn{order:2}
+.toast{pointer-events:none;max-width:calc(100% - 32px);text-align:center;bottom:calc(24px + env(safe-area-inset-bottom))}
+/* locked export: tappable, explains what is missing */
+.btn.is-locked,.btn.primary.is-locked{background:#c9d3da;color:#41566a;box-shadow:none}
+.check.missing{border-color:var(--red,#d93a40);background:#fff1f1;box-shadow:0 0 0 3px rgba(217,58,64,.18)}
+#provSigWrap.missing-sig .sigwrap,#provSigWrap.missing-sig canvas{outline:3px solid var(--red,#d93a40);outline-offset:2px;border-radius:14px}
+.pulse{animation:cpPulse .5s ease-in-out 3}
+@keyframes cpPulse{50%{transform:scale(1.02);box-shadow:0 0 0 8px rgba(217,58,64,.25)}}
+.missing-list{margin:8px 0 0 20px;padding:0;font-size:16px;font-weight:700}
+.missing-list li{margin:2px 0}
+.lockbar .small{font-size:14px;font-weight:600;opacity:.85}
+/* export result panel */
+.export-overlay{z-index:55;padding:12px;align-items:center}
+.export-modal{max-width:560px;width:100%;max-height:calc(100dvh - 24px);overflow:auto;text-align:center}
+.export-modal .exp-ico{font-size:44px}
+.export-modal .msg{font-size:18px;font-weight:700;padding:12px 14px;border-radius:14px}
+.export-modal .msg.ok{background:#eefaf3;color:#166534}.export-modal .msg.err{background:#fff1f1;color:#9b1c1c}.export-modal .msg.info{background:#eef6fb;color:#0b4a6f}
+.exp-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:12px 0}
+.exp-final{display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap;margin-top:12px}
+.exp-final .btn{flex:1 1 200px}
+body[data-device=phone] .exp-actions .btn{flex:1 1 100%}
+.toast{font-size:15px;padding:10px 16px;width:max-content;max-width:min(560px,calc(100% - 24px))}
+body[data-device=phone] .topbar:has(.clinic-chip:not([hidden])) .logo-mark{display:none}
