@@ -1,0 +1,2 @@
+{ "name": "ClinicPad V1 (prototipo)", "short_name": "ClinicPad", "start_url": "./index.html", "scope": "./", "display": "standalone", "orientation": "any", "background_color": "#eef6f8", "theme_color": "#0fa3a3", "lang": "es",
+  "icons": [ { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" } ] }

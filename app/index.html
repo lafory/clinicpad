@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0fa3a3">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="robots" content="noindex">
+<title>ClinicPad V1 — Prototipo</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo-mark" aria-hidden="true"></span><span data-brand>ClinicPad</span><small class="proto">V1 · prototipo</small></div>
+  <div class="top-actions"><button class="btn ghost" id="langBtn" data-action="toggleLang">English</button></div>
+</header>
+<div id="allergyBanner" class="allergy-banner" hidden></div>
+<main id="app" aria-live="polite"></main>
+<footer class="disclaimer" id="footer"></footer>
+<div id="idle" class="overlay" hidden><div class="modal"><h2 id="idleTitle"></h2><p id="idleText"></p><button class="btn primary xl" data-action="idleKeep" id="idleKeep"></button></div></div>
+<div id="toast" class="toast" hidden></div>
+<script src="vendor/jspdf.umd.min.js"></script>
+<script src="vendor/zxing.min.js"></script>
+<script src="brand.js"></script>
+<script src="i18n.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
