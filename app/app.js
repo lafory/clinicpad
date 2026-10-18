@@ -34,9 +34,9 @@ const newProvider = () => ({
   bpSys: '', bpDia: '', pulse: '', temp: '', pain: null,
   pick: { findings: [], diagnosis: [], treatment: [], medicines: [] },
   notes: { findings: '', diagnosis: '', treatment: '', medicines: '' },
-  check: {}, sig: '', pdfLang: null, spec: null, staffId: null, showMissing: false
+  check: {}, sig: '', pdfLang: null, spec: null, staffId: null, showMissing: false, visitId: (crypto.randomUUID ? crypto.randomUUID() : 'v' + Date.now() + Math.random().toString(36).slice(2))
 });
-const newDraft = () => ({ name: '', logo: '', logoW: 0, logoH: 0, address: '', phone: '', specialty: 'dental', customText: '', timeoutMin: 2, adminPin: '', adminPin2: '', saveEnc: false, staff: [], pass: '', importPass: '' });
+const newDraft = () => ({ name: '', logo: '', logoW: 0, logoH: 0, address: '', phone: '', specialty: 'dental', customText: '', timeoutMin: 2, retention: 'eod', closeTime: '23:59', adminPin: '', adminPin2: '', saveEnc: false, staff: [], pass: '', importPass: '' });
 const newStaff = () => ({ id: '', name: '', role: 'dentist', license: '', photo: '', sig: '', pin: '', pin2: '' });
 const state = {
   lang: 'es', device: detectDevice(), reception: false, inputMode: null, screen: 'clinic', config: null,
@@ -66,7 +66,7 @@ const roleLabel = (k, lang) => roleOf(k)[lang || state.lang];
 const isClinician = st => st.role !== 'reception';
 const initials = n => esc(String(n || '?').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase());
 const avatar = (st, cls = '') => st.photo ? `<img class="avatar ${cls}" src="${st.photo}" alt="">` : `<span class="avatar ini ${cls}" aria-hidden="true">${initials(st.name)}</span>`;
-const curStaff = () => (state.config && state.config.staff.find(x => x.id === state.provider.staffId)) || null;
+const curStaff = () => state.viewStaff || (state.config && state.config.staff.find(x => x.id === state.provider.staffId)) || null;
 const clinicHead = () => { const c = state.config ? state.config.clinic : state.draft; return `<div class="clinic-head">${c.logo ? `<img src="${c.logo}" alt="">` : ''}<div><b>${esc(c.name)}</b>${c.address || c.phone ? `<span>${esc([c.address, c.phone].filter(Boolean).join(' · '))}</span>` : ''}</div></div>`; };
 const pick = s => { const [es, en] = s.split('|'); return { es, en: en || es }; };
 
@@ -84,6 +84,10 @@ const screens = {
       <label class="f">${T('specialty')}</label><div class="chips">${Object.keys(C.specialties).map(k => chip(d.specialty === k, cat('specialties', k), 'setVal', k).replace('data-val', 'data-path="draft.specialty" data-val')).join('')}</div>
       <label class="f" for="cq">${T('customQ')}</label><textarea id="cq" data-bind="draft.customText" placeholder="${state.lang === 'es' ? 'Ej.: ¿Paciente en ayunas?\nEj.: ¿Rayos X previos revisados?' : 'E.g.: Patient fasting?\nE.g.: Prior X-rays reviewed?'}">${esc(d.customText)}</textarea><p class="small">${T('customQHint')}</p>
       <div class="grid2"><div>${field('timeout', 'draft.timeoutMin', 'number', 'min="1" max="30"')}</div></div>
+      <div class="card retention-box" id="retentionBox"><h3>🗂️ ${T('retTitle')}</h3><p class="small">${T('retIntro')}</p>
+        <div class="chips">${RETENTIONS.map(r => chip(d.retention === r, T('ret_' + r), 'setVal', r).replace('data-val', 'data-path="draft.retention" data-val')).join('')}</div>
+        ${d.retention === 'eod' ? `<label class="f" for="closeTime">${T('closeTime')}</label><input type="time" id="closeTime" data-bind="draft.closeTime" value="${esc(d.closeTime)}" style="max-width:200px">` : ''}
+        <p class="small">${T('retPrivacy')}</p>${editing ? `<button class="btn danger" data-action="wipeAllVisits">🧹 ${T('closeDay')}</button>` : ''}</div>
       <div class="grid2"><div>${field('adminPin', 'draft.adminPin', 'password', 'inputmode="numeric" maxlength="8" autocomplete="new-password"')}</div><div>${field('adminPin2', 'draft.adminPin2', 'password', 'inputmode="numeric" maxlength="8" autocomplete="new-password"')}</div></div>
       <p class="small">${T('adminPinHint')}${editing || d._adminPin ? (state.lang === 'es' ? ' Déjelo en blanco para mantener el actual.' : ' Leave blank to keep the current one.') : ''}</p>
       ${editing ? '' : importBlock()}
@@ -134,6 +138,7 @@ const screens = {
       <div class="row" style="justify-content:center;margin-top:28px">
         <span class="tag" id="deviceTag">${state.lang === 'es' ? 'Dispositivo' : 'Device'}: ${devLbl}</span>
         <label class="check" style="margin:0;min-height:52px"><input type="checkbox" id="recToggle" data-bind="reception" ${state.reception ? 'checked' : ''}><span>${state.lang === 'es' ? 'Modo recepción (el personal escribe)' : 'Front desk mode (staff types)'}</span></label>
+        ${retention() !== 'now' ? `<button class="btn ghost" data-action="todayAccess" id="todayBtn">📋 ${T('todayBtn')}</button>` : ''}
         <button class="btn ghost" data-action="settings">⚙️ ${T('staffSettings')}</button></div></div>`;
   },
   license() {
@@ -202,8 +207,8 @@ const screens = {
       <button class="btn primary xl" data-action="staffAccess" data-enter="1">🔒 ${T('staffAccess')}</button></div>`;
   },
   pin() {
-    const st = state.pinTarget === 'provider' && state.config.staff.find(x => x.id === state.selStaff);
-    return `<div class="card center">${st ? `<div class="pin-who">${avatar(st, 'lg')}<b>${esc(st.name)}</b><span>${esc(roleLabel(st.role))}</span></div><h1>${T('pinFor')} ${esc(st.name.split(' ')[0])}</h1>` : `<h1>${state.pinTarget === 'settings' ? T('adminPin').replace(/\s*\(.*\)/, '') : T('pinTitle')}</h1>`}<p class="lead">${T('pinEnter')}</p>${msgBox()}${pinPad()}
+    const st = (state.pinTarget === 'provider' || state.pinTarget === 'today') && state.config.staff.find(x => x.id === state.selStaff);
+    return `<div class="card center">${st ? `<div class="pin-who">${avatar(st, 'lg')}<b>${esc(st.name)}</b><span>${esc(roleLabel(st.role))}</span></div><h1>${T('pinFor')} ${esc(st.name.split(' ')[0])}</h1>` : `<h1>${state.pinTarget === 'settings' || state.selStaff === 'admin' ? T('adminPin').replace(/\s*\(.*\)/, '') : T('pinTitle')}</h1>`}<p class="lead">${T('pinEnter')}</p>${msgBox()}${pinPad()}
       <button class="btn ghost" data-action="pinCancel">${T('pinBack')}</button></div>`;
   },
   provider() {
@@ -239,11 +244,34 @@ const screens = {
         <div id="lockbar" class="lockbar ${ready ? 'open' : 'locked'}" role="status">${ready ? '🔓 ' + T('clUnlocked') : `<div>🔒 ${T('clLocked').replace('{n}', left)}${v.sig ? '' : ' · ' + T('sigMissing')}${v.showMissing ? `<ul class="missing-list">${items.filter(i => !v.check[i.key]).map(i => `<li>${esc(i.label)}</li>`).join('')}${v.sig ? '' : `<li>${T('sigMissing')}</li>`}</ul>` : `<div class="small">${T('lockHint')}</div>`}</div>`}</div>
         <label class="f">${T('pdfLang')}</label><div class="chips">${chip(lang === 'es', 'Español', 'setVal', 'es').replace('data-val', 'data-path="provider.pdfLang" data-val')}${chip(lang === 'en', 'English', 'setVal', 'en').replace('data-val', 'data-path="provider.pdfLang" data-val')}</div>
         <div class="nav"><button class="btn danger" data-action="cancelVisit">🗑️ ${T('cancelVisit')}</button>
-          <div class="row"><button class="btn ghost xl ${ready ? '' : 'is-locked'}" id="printBtn" data-action="printPdf" data-locked="${!ready}" aria-describedby="lockbar">${ready ? '' : '<span class="lock">🔒</span>'}🖨️ ${T('printPdf')}</button>
-          <button class="btn primary xl ${ready ? '' : 'is-locked'}" id="exportBtn" data-action="exportPdf" data-locked="${!ready}" aria-describedby="lockbar">${ready ? '' : '<span class="lock">🔒</span>'}📄 ${T('exportPdf')}</button></div></div></div>`;
+          <div class="row"><button class="btn primary xl ${ready ? '' : 'is-locked'}" id="printBtn" data-action="printPdf" data-locked="${!ready}" aria-describedby="lockbar">${ready ? '' : '<span class="lock">🔒</span>'}🖨️ ${T('printPdf')}</button>
+          <button class="btn ghost xl ${ready ? '' : 'is-locked'}" id="exportBtn" data-action="exportPdf" data-locked="${!ready}" aria-describedby="lockbar">${ready ? '' : '<span class="lock">🔒</span>'}📄 ${T('exportPdf')}</button></div></div></div>`;
+  },
+  todayWho() {
+    const list = state.config.staff.filter(isClinician);
+    return `<div class="card center">${clinicHead()}<h1>📋 ${T('todayTitle')}</h1><p class="lead">${T('todayWhoIntro')}</p>
+      <div class="staff-grid">${list.map(x => `<button class="staff-tile" data-action="todayPick" data-val="${x.id}">${avatar(x, 'lg')}<b>${esc(x.name)}</b><span>${esc(roleLabel(x.role))}</span></button>`).join('')}
+      <button class="staff-tile" data-action="todayPick" data-val="admin"><span class="avatar lg ini">🛡️</span><b>${T('adminAll')}</b><span>${T('adminAllHint')}</span></button></div>
+      <button class="btn ghost" data-action="goto" data-val="start" style="margin-top:16px">${T('pinBack')}</button></div>`;
+  },
+  today() {
+    const t = state.today || { list: [] }; const admin = t.who === 'admin'; const who = admin ? T('adminAll') : (state.config.staff.find(x => x.id === t.who) || {}).name || '';
+    const rows = t.list.map(r => `<div class="visit-row" data-id="${r.id}"><div class="vtime">${esc(new Date(r.createdAt).toLocaleTimeString(state.lang === 'es' ? 'es-US' : 'en-US', { hour: 'numeric', minute: '2-digit' }))}</div>
+      <div class="who"><b>${esc(r.name)}</b><span>${esc(r.staffName)}${r.staffRole ? ' · ' + esc(roleLabel(r.staffRole)) : ''}</span></div>
+      ${r.allergy === 'yes' ? `<span class="atag red">⚠️ ${T('allergyFlag')}</span>` : r.allergy === 'no' ? `<span class="atag ok">✓ ${T('noAllergyFlag')}</span>` : `<span class="atag warn">? ${T('allergyUnknownFlag')}</span>`}
+      <button class="btn ghost" data-action="openVisit" data-val="${r.id}">👁️ ${T('openVisit')}</button></div>`).join('');
+    return `<div class="card">${clinicHead()}<h1>📋 ${T('todayTitle')}</h1><p class="lead">${esc(who)} · <b id="todayCount">${t.list.length}</b> ${T(t.list.length === 1 ? 'patientOne' : 'patientMany')}</p>
+      ${msgBox()}<div id="todayList">${rows || `<p class="msg info">${T('todayEmpty')}</p>`}</div>
+      <p class="small">🔐 ${T('todayInfo').replace('{t}', esc(retentionLabel()))}</p>
+      <div class="nav"><button class="btn ghost xl" data-action="todayClose">← ${T('todayExit')}</button>${admin ? `<button class="btn danger" data-action="wipeAllVisits" id="wipeAllBtn">🧹 ${T('closeDay')}</button>` : ''}</div></div>`;
+  },
+  visitView() {
+    const r = state.viewRec; if (!r) return '';
+    return `<div class="card"><div class="ro-tag">🔒 ${T('readOnly')}</div><div class="pv-screen">${withRecord(r, () => buildPrintHtml(r.lang))}</div>
+      <div class="nav"><button class="btn ghost xl" data-action="backToday">← ${T('backList')}</button><div class="row"><button class="btn ghost xl" data-action="viewExport" id="viewExportBtn">📄 ${T('exportPdf')}</button><button class="btn primary xl" data-action="viewPrint" id="viewPrintBtn">🖨️ ${T('printPdf')}</button></div></div></div>`;
   },
   done() {
-    return `<div class="card hero"><div style="font-size:64px">🧾</div><div class="big">${T('doneTitle')}</div><p class="lead" style="font-size:20px">${T('doneText')}</p>
+    return `<div class="card hero"><div style="font-size:64px">🧾</div><div class="big">${T('doneTitle')}</div><p class="lead" style="font-size:20px">${retention() === 'now' ? T('doneText') : T('doneTextKept').replace('{t}', esc(expiryLabel()))}</p>
       <button class="btn primary xl" data-action="nextPatient" data-enter="1">${T('nextPatient')} →</button></div>`;
   }
 };
@@ -416,7 +444,7 @@ async function loadSettings(pin) { return migrateConfig(await decryptJSON(JSON.p
 function configToDraft(c) {
   const k = c.clinic;
   state.draft = Object.assign(newDraft(), { name: k.name, logo: k.logo || '', logoW: k.logoW || 0, logoH: k.logoH || 0, address: k.address || '', phone: k.phone || '', specialty: k.specialty || 'dental',
-    customText: (k.custom || []).join('\n'), timeoutMin: k.timeoutMin || 2, saveEnc: !!localStorage.getItem(SETTINGS_KEY), staff: c.staff.map(x => ({ ...x })), _adminPin: c.adminPin });
+    customText: (k.custom || []).join('\n'), timeoutMin: k.timeoutMin || 2, retention: k.retention || 'eod', closeTime: k.closeTime || '23:59', saveEnc: !!localStorage.getItem(SETTINGS_KEY), staff: c.staff.map(x => ({ ...x })), _adminPin: c.adminPin });
 }
 // ---------- images (resized client-side; never patient images) ----------
 function loadImage(file) { return new Promise((res, rej) => { const url = URL.createObjectURL(file); const im = new Image(); im.onload = () => { URL.revokeObjectURL(url); res(im); }; im.onerror = e => { URL.revokeObjectURL(url); rej(e); }; im.src = url; }); }
@@ -497,6 +525,86 @@ function buildPdf(lang) {
   const n = doc.internal.getNumberOfPages(); for (let i = 1; i <= n; i++) { doc.setPage(i); footer(); doc.setFontSize(8); doc.setTextColor(100); doc.text(`${i}/${n}`, W - M, H - 34, { align: 'right' }); doc.setTextColor(0); }
   return doc;
 }
+// ---------- print-ready HTML (window.print -> AirPrint on iPad/iPhone, Mopria / system print on Android; works offline) ----------
+function buildPrintHtml(lang) {
+  const p = state.patient, v = state.provider, k = state.config.clinic, L2 = key => TL(lang, key), es = lang === 'es';
+  const st = curStaff() || { name: '', role: '', license: '', photo: '' }; const now = new Date();
+  const row = (l, val, red) => `<tr${red ? ' class="red"' : ''}><th>${esc(l)}</th><td>${esc(val || '—')}</td></tr>`;
+  const sec = (t, rows) => `<h2>${esc(t)}</h2><table>${rows.join('')}</table>`;
+  const yn = c => p.cond[c] === 'yes' ? L2('yes') : p.cond[c] === 'no' ? L2('no') : p.cond[c] === 'na' ? L2('notApplicable') : '—';
+  const al = allergyLabels(lang); const alTxt = p.hasAllergies === 'yes' ? `${L2('allergyBanner')}: ${al.join(', ') || L2('yes')}` : p.hasAllergies === 'no' ? L2('noAllergies') : L2('allergyUnknown');
+  const saveLang = state.lang; state.lang = lang; const items = checklistItems(); state.lang = saveLang;
+  const head = `<header class="pv-head">${k.logo ? `<img class="pv-logo" src="${k.logo}" alt="">` : ''}<div class="pv-clinic"><b>${esc(k.name || 'Clinic')}</b><span>${esc([k.address, k.phone].filter(Boolean).join(' · '))}</span></div>
+    <div class="pv-prov"><b>${esc(st.name || '')}</b><span>${esc(st.role ? roleLabel(st.role, lang) : '')}</span>${st.license ? `<span>${es ? 'Licencia' : 'License'}: ${esc(st.license)}</span>` : ''}</div>${st.photo ? `<img class="pv-photo" src="${st.photo}" alt="">` : ''}</header>
+    <div class="pv-title"><b>${es ? 'Registro de visita del paciente' : 'Patient visit record'}</b><span>${esc(now.toLocaleString(es ? 'es-US' : 'en-US'))}</span></div>`;
+  return `${head}<div class="pv-allergy ${p.hasAllergies === 'no' ? 'ok' : ''}">${esc(alTxt)}</div>
+  ${sec(es ? 'Datos del paciente' : 'Patient information', [row(es ? 'Nombre' : 'Name', fullName()), row(L2('dob'), p.dob), row(L2('sex'), p.sex ? cat('sex', p.sex, lang) : ''), row(L2('address'), [p.address, p.city, p.state, p.zip].filter(Boolean).join(', ')), row(L2('phone'), p.phone), row(L2('dlNo'), p.dlNo)])}
+  ${sec(es ? 'Motivo y síntomas' : 'Reason and symptoms', [row(L2('reason'), p.reason), row(L2('symptoms'), p.symptoms.map(x => cat('symptoms', x, lang)).join(', ')), row(L2('duration'), p.duration ? cat('duration', p.duration, lang) : ''), row(es ? 'Dolor (paciente)' : 'Pain (patient)', p.pain != null ? p.pain + '/10' : ''), row(es ? 'Zonas de dolor' : 'Pain locations', p.body.map(x => cat('body', x, lang)).join(', '))])}
+  ${sec(L2('histTitle'), Object.keys(C.conditions).map(c => row(cat('conditions', c, lang).replace(/\s*\(.*\)/, '').replace(/[¿?]/g, ''), yn(c) + (c === 'surgery' && p.surgeryDetail ? ' — ' + p.surgeryDetail : ''), p.cond[c] === 'yes')).concat(p.otherCond ? [row(L2('otherConditions'), p.otherCond)] : [], [row(L2('medTitle'), p.takesMeds === 'no' ? L2('no') : p.meds.join(', '))]))}
+  ${sec(L2('vitals'), [row(L2('bp'), v.bpSys && v.bpDia ? `${v.bpSys}/${v.bpDia}` : ''), row(L2('pulse'), v.pulse), row(L2('temp'), v.temp), row(es ? 'Dolor (proveedor)' : 'Pain (provider)', (v.pain ?? p.pain) != null ? (v.pain ?? p.pain) + '/10' : '')])}
+  ${sec(es ? 'Evaluación y plan' : 'Assessment and plan', ['findings', 'diagnosis', 'treatment', 'medicines'].map(x => row(L2(x), v.pick[x].map(q => pick(q)[lang]).concat(v.notes[x] ? [v.notes[x]] : []).join('; '))))}
+  <h2>${esc(L2('checklist').replace(/\s*\(.*\)/, ''))}</h2><ul class="pv-check">${items.map(i => `<li>${v.check[i.key] ? '☑' : '☐'} ${esc(i.label)}${i.hint ? ' — ' + esc(i.hint) : ''}</li>`).join('')}</ul>
+  <section class="pv-consent">${head}<h2>${esc(L2('consTitle'))}</h2><p>${esc(L2('consText'))}</p><p><b>${es ? 'Consentimiento' : 'Consent'}:</b> ${p.consent ? (es ? 'Aceptado por el paciente en la tablet' : 'Accepted by patient on tablet') : '—'}</p>
+  <div class="pv-sigs"><figure>${p.patientSig ? `<img src="${p.patientSig}" alt="">` : ''}<figcaption>${esc(L2('patSig'))}: ${esc(fullName())}</figcaption></figure><figure>${v.sig ? `<img src="${v.sig}" alt="">` : ''}<figcaption>${esc(L2('provSigTitle'))}: ${esc(st.name)}${st.role ? ' (' + esc(roleLabel(st.role, lang)) + ')' : ''}</figcaption></figure></div></section>
+  <footer class="pv-foot">${esc(L2('footer'))}</footer>`;
+}
+function printNow() {
+  const pv = document.getElementById('printView'); pv.innerHTML = buildPrintHtml(state.provider.pdfLang || state.lang);
+  document.body.classList.add('printing'); window.print(); // class stays until the panel closes (iOS prints asynchronously)
+}
+// ---------- "Visitas de hoy": encrypted on-device store (IndexedDB, AES-GCM; keys derived from PINs; auto-purge) ----------
+const RETENTIONS = ['eod', '24h', 'now'];
+const retention = () => (state.config && state.config.clinic.retention) || 'eod';
+const closeTimeOf = () => (state.config && state.config.clinic.closeTime) || '23:59';
+function expiryFor(created) {
+  if (retention() === '24h') return created + 24 * 3600e3;
+  const [h, m] = closeTimeOf().split(':').map(Number); const d = new Date(created); d.setHours(h, m, 0, 0); if (d.getTime() <= created) d.setDate(d.getDate() + 1); return d.getTime();
+}
+const fmtTime = ms => new Date(ms).toLocaleString(state.lang === 'es' ? 'es-US' : 'en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+const expiryLabel = () => fmtTime(expiryFor(Date.now()));
+const retentionLabel = () => retention() === '24h' ? T('ret_24h') : T('ret_eodAt').replace('{t}', closeTimeOf());
+const VDB = 'clinicpad-visits';
+function vdb() { return new Promise((res, rej) => { const r = indexedDB.open(VDB, 1); r.onupgradeneeded = () => { r.result.createObjectStore('visits', { keyPath: 'id' }); r.result.createObjectStore('meta'); }; r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+async function vtx(store, mode, fn) { const db = await vdb(); return new Promise((res, rej) => { const tx = db.transaction(store, mode); const st = tx.objectStore(store); let out; Promise.resolve(fn(st, v => (out = v))).catch(rej); tx.oncomplete = () => { db.close(); res(out); }; tx.onerror = () => { db.close(); rej(tx.error); }; }); }
+const reqP = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+async function vAll() { return vtx('visits', 'readonly', (st, set) => reqP(st.getAll()).then(set)); }
+async function deviceSalt() {
+  let salt = await vtx('meta', 'readonly', (st, set) => reqP(st.get('salt')).then(set));
+  if (!salt) { salt = b64(crypto.getRandomValues(new Uint8Array(16))); await vtx('meta', 'readwrite', st => st.put(salt, 'salt')); } return unb64(salt);
+}
+const kekCache = new Map();
+async function kek(pin) { const k = 'k' + pin; if (!kekCache.has(k)) kekCache.set(k, await keyFromSecret('clinicpad-visit:' + pin, await deviceSalt())); return kekCache.get(k); }
+async function wrapKey(raw, pin) { const iv = crypto.getRandomValues(new Uint8Array(12)); return { iv: b64(iv), wk: b64(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await kek(pin), raw)) }; }
+async function hasVisit(id) { try { return !!(await vtx('visits', 'readonly', (st, set) => reqP(st.getKey(id)).then(set))); } catch (e) { return false; } }
+function storeVisit() { const v = state.provider; if (!v._saving) v._saving = storeVisitNow().catch(e => { v._saving = null; throw e; }); return v._saving; }
+async function storeVisitNow() {
+  if (retention() === 'now' || !crypto.subtle || !window.indexedDB) return null;
+  const v = state.provider, st = curStaff(); if (!st || !v.visitId || await hasVisit(v.visitId)) return null;
+  const created = Date.now(), pdfB64 = exp && exp.blob ? b64(await exp.blob.arrayBuffer()) : '';
+  const payload = { v: 1, createdAt: created, lang: v.pdfLang || state.lang, patient: { ...state.patient }, provider: { ...v, showMissing: false, _saving: undefined }, staff: { id: st.id, name: st.name, role: st.role, license: st.license, photo: st.photo }, pdf: pdfB64, pdfName: exp ? exp.name : '' };
+  const dk = crypto.getRandomValues(new Uint8Array(32)); const key = await crypto.subtle.importKey('raw', dk, 'AES-GCM', false, ['encrypt']); const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify(payload)));
+  const wraps = [await wrapKey(dk, st.pin), await wrapKey(dk, state.config.adminPin)]; dk.fill(0);
+  const rec = { id: v.visitId, createdAt: created, expiresAt: expiryFor(created), alg: 'AES-GCM-256', iv: b64(iv), ct: b64(ct), wraps };
+  await vtx('visits', 'readwrite', s2 => s2.put(rec)); return rec;
+}
+async function openVisits(pin) {
+  await purgeExpired(); const k = await kek(pin); const out = [];
+  for (const r of await vAll()) { for (const w of r.wraps) { try { const raw = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(w.iv) }, k, unb64(w.wk)); const key = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['decrypt']);
+      const pl = JSON.parse(dec.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(r.iv) }, key, unb64(r.ct))));
+      out.push({ id: r.id, createdAt: r.createdAt, name: [pl.patient.first, pl.patient.last].filter(Boolean).join(' ') || pl.patient.name, staffName: pl.staff.name, staffRole: pl.staff.role, allergy: pl.patient.hasAllergies, rec: pl }); break; } catch (e) { /* not this PIN's record */ } } }
+  return out.sort((a, b) => b.createdAt - a.createdAt);
+}
+async function purgeExpired() {
+  if (!window.indexedDB) return 0; let n = 0; const now = Date.now();
+  try { await vtx('visits', 'readwrite', st => reqP(st.getAll()).then(all => all.forEach(r => { if (!(r.expiresAt > now) || retention() === 'now' && state.config) { st.delete(r.id); n++; } }))); } catch (e) {}
+  if (n && state.today) { const ids = new Set((await vAll()).map(r => r.id)); state.today.list = state.today.list.filter(r => ids.has(r.id)); if (state.viewRec && !ids.has(state.viewRec.id)) { state.viewRec = null; if (state.screen === 'visitView') state.screen = 'today'; } if (['today', 'visitView'].includes(state.screen)) render(); }
+  return n;
+}
+async function wipeAllVisits() { kekCache.clear(); try { await vtx('visits', 'readwrite', st => st.clear()); } catch (e) {} }
+function withRecord(r, fn) { const sp = state.patient, sv = state.provider; state.patient = r.patient; state.provider = r.provider; state.viewStaff = r.staff; try { return fn(); } finally { state.patient = sp; state.provider = sv; state.viewStaff = null; } }
+purgeExpired(); setInterval(purgeExpired, 30000); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') purgeExpired(); }); window.addEventListener('pageshow', purgeExpired);
+
 // ---------- export / print (iOS-safe: share sheet, download, open; wipe only after the user confirms) ----------
 const isReady = () => { const v = state.provider; return checklistItems().every(i => v.check[i.key]) && !!v.sig; };
 let exp = null; // { url, name, file, lang }
@@ -513,7 +621,7 @@ function makePdf(autoPrint) {
   const blob = doc.output('blob'); const name = pdfName(lang);
   if (exp && exp.url) URL.revokeObjectURL(exp.url);
   let file = null; try { file = new File([blob], name, { type: 'application/pdf' }); } catch (e) {}
-  exp = { url: URL.createObjectURL(blob), name, file, lang, size: blob.size }; return exp;
+  exp = { url: URL.createObjectURL(blob), blob, name, file, lang, size: blob.size }; return exp;
 }
 const canShareFile = () => !!(exp && exp.file && navigator.share && navigator.canShare && (() => { try { return navigator.canShare({ files: [exp.file] }); } catch (e) { return false; } })());
 function downloadPdf() { const a = document.createElement('a'); a.href = exp.url; a.download = exp.name; a.rel = 'noopener'; document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 1000); }
@@ -524,22 +632,23 @@ function sharePdf() {
 function openPdfTab() { const w = window.open(exp.url, '_blank'); if (!w) showExport('popupBlocked'); else showExport('opened'); }
 function startExport(mode) {
   if (!isReady()) return explainMissing();
-  try { makePdf(mode === 'print'); } catch (e) { console.warn(e); return showExport('error', e); }
+  try { makePdf(false); } catch (e) { console.warn(e); if (mode !== 'print') return showExport('error', e); }
   const mobile = state.device !== 'desktop';
-  if (mode === 'print') { const w = window.open(exp.url, '_blank'); return showExport(w ? 'printOpened' : 'popupBlocked'); }
+  if (mode === 'print') { try { printNow(); } catch (e) { return showExport('printFail', e); } return showExport('printDialog'); }
   if (mobile && canShareFile()) { showExport('sharing'); return sharePdf(); } // must stay inside the tap (user gesture)
   try { downloadPdf(); showExport('downloaded'); } catch (e) { showExport('error', e); }
 }
 function showExport(status, err) {
+  if (['shared', 'downloaded', 'opened', 'printOpened', 'printDialog'].includes(status) && state.screen === 'provider') storeVisit().then(r => { if (r) toast(T('visitSaved').replace('{t}', fmtTime(r.expiresAt))); }).catch(e => console.warn('store', e));
   const ov = document.getElementById('exportPanel'); if (!ov) return;
-  const ok = ['shared', 'downloaded', 'opened', 'printOpened'].includes(status), bad = ['error', 'shareFail', 'popupBlocked'].includes(status);
+  const ok = ['shared', 'downloaded', 'opened', 'printOpened', 'printDialog'].includes(status), bad = ['error', 'shareFail', 'popupBlocked', 'printFail'].includes(status);
   const msg = T('exp_' + status) + (err && status === 'error' ? ` (${esc(err.message || err)})` : '');
   const kb = exp ? Math.round(exp.size / 1024) : 0;
   ov.innerHTML = `<div class="modal export-modal" role="dialog" aria-modal="true" aria-labelledby="expTitle">
     <div class="exp-ico">${ok ? '✅' : bad ? '⚠️' : status === 'sharing' ? '⏳' : 'ℹ️'}</div><h2 id="expTitle">${ok ? T('expOkTitle') : bad ? T('expBadTitle') : T('expTitle')}</h2>
     <p class="msg ${ok ? 'ok' : bad ? 'err' : 'info'}" id="expStatus" data-status="${status}">${msg}</p>
     ${exp ? `<p class="small">📄 ${esc(exp.name)} · ${kb} KB</p>` : ''}
-    <div class="exp-actions">
+    <div class="exp-actions"><button class="btn ghost" data-action="expPrint">🖨️ ${T('expPrint')}</button>
       ${exp && canShareFile() ? `<button class="btn ghost" data-action="expShare">📤 ${T('expShare')}</button>` : ''}
       ${exp ? `<button class="btn ghost" data-action="expDownload">⬇️ ${T('expDownload')}</button><button class="btn ghost" data-action="expOpen">🔎 ${T('expOpen')}</button>` : ''}
       ${exp && (status === 'popupBlocked' || state.device !== 'desktop') ? `<button class="btn ghost" data-action="expOpenHere">↗️ ${T('expOpenHere')}</button>` : ''}
@@ -549,11 +658,12 @@ function showExport(status, err) {
   const tEl = document.getElementById('toast'); if (tEl) tEl.hidden = true;
   ov.hidden = false; document.getElementById('expDone')?.focus({ preventScroll: true });
 }
-function hideExport() { const ov = document.getElementById('exportPanel'); if (ov) { ov.hidden = true; ov.innerHTML = ''; } }
+function hideExport() { document.body.classList.remove('printing'); const pv = document.getElementById('printView'); if (pv) pv.innerHTML = ''; const ov = document.getElementById('exportPanel'); if (ov) { ov.hidden = true; ov.innerHTML = ''; } }
 
 // ---------- wipe ----------
 function wipe(next = 'start') {
   state.patient = newPatient(); state.provider = newProvider(); state.pinBuf = ''; state.msg = null; state.selStaff = null;
+  state.today = null; state.viewRec = null; state.viewStaff = null; kekCache.clear();
   hideExport(); if (exp && exp.url) setTimeout(((u) => () => URL.revokeObjectURL(u))(exp.url), 60000); exp = null;
   document.querySelectorAll('canvas').forEach(c => { c.width = c.height = 0; });
   document.querySelectorAll('input[type=file]').forEach(i => (i.value = ''));
@@ -597,15 +707,16 @@ const actions = {
     if (!d.staff.some(isClinician)) { state.msg = { type: 'err', text: T('noStaff') }; return render(); }
     if (!d._adminPin) { state.msg = { type: 'err', text: T('pinMismatch') }; return go('clinic'); }
     state.config = { adminPin: d._adminPin, clinic: { name: d.name.trim(), logo: d.logo, logoW: d.logoW, logoH: d.logoH, address: d.address.trim(), phone: d.phone.trim(), specialty: d.specialty,
-      custom: d.customText.split('\n').map(x => x.trim()).filter(Boolean), timeoutMin: Math.max(1, Math.min(30, +d.timeoutMin || 2)) }, staff: d.staff.map(x => ({ ...x })) };
+      custom: d.customText.split('\n').map(x => x.trim()).filter(Boolean), timeoutMin: Math.max(1, Math.min(30, +d.timeoutMin || 2)), retention: RETENTIONS.includes(d.retention) ? d.retention : 'eod', closeTime: /^\d\d:\d\d$/.test(d.closeTime) ? d.closeTime : '23:59' }, staff: d.staff.map(x => ({ ...x })) };
     if (d.saveEnc && crypto.subtle) { await saveSettings(state.config); toast(state.lang === 'es' ? 'Configuración guardada (cifrada)' : 'Setup saved (encrypted)'); }
     else localStorage.removeItem(SETTINGS_KEY);
+    if (state.config.clinic.retention === 'now') await wipeAllVisits(); else purgeExpired();
     d.adminPin = d.adminPin2 = d.pass = ''; go('start');
   },
   async exportConfig() {
     const d = state.draft; if ((d.pass || '').length < 8) { state.msg = { type: 'err', text: T('passShort') }; return render(); }
     if (!d._adminPin) { state.msg = { type: 'err', text: T('pinMismatch') }; return go('clinic'); }
-    const cfg = { adminPin: d._adminPin, clinic: { name: d.name.trim(), logo: d.logo, logoW: d.logoW, logoH: d.logoH, address: d.address.trim(), phone: d.phone.trim(), specialty: d.specialty, custom: d.customText.split('\n').map(x => x.trim()).filter(Boolean), timeoutMin: Math.max(1, Math.min(30, +d.timeoutMin || 2)) }, staff: d.staff.map(x => ({ ...x })) };
+    const cfg = { adminPin: d._adminPin, clinic: { name: d.name.trim(), logo: d.logo, logoW: d.logoW, logoH: d.logoH, address: d.address.trim(), phone: d.phone.trim(), specialty: d.specialty, custom: d.customText.split('\n').map(x => x.trim()).filter(Boolean), timeoutMin: Math.max(1, Math.min(30, +d.timeoutMin || 2)), retention: RETENTIONS.includes(d.retention) ? d.retention : 'eod', closeTime: /^\d\d:\d\d$/.test(d.closeTime) ? d.closeTime : '23:59' }, staff: d.staff.map(x => ({ ...x })) };
     const file = await encryptJSON(cfg, d.pass, { kind: 'clinicpad-config', app: window.BRAND || 'ClinicPad', created: new Date().toISOString().slice(0, 10) });
     download(`${(window.BRAND || 'ClinicPad').replace(/\W+/g, '')}-config-${(d.name || 'clinic').replace(/[^\w]+/g, '-').slice(0, 40)}.cpcfg`, JSON.stringify(file), 'application/json');
     d.pass = ''; state.msg = { type: 'ok', text: T('exported') }; render();
@@ -638,11 +749,18 @@ const actions = {
       else { state.pinBuf = ''; state.msg = { type: 'err', text: T('badPin') }; render(); }
       return;
     }
+    if (state.pinTarget === 'today') {
+      const st = state.selStaff === 'admin' ? { pin: state.config.adminPin } : state.config.staff.find(x => x.id === state.selStaff);
+      if (st && state.pinBuf === st.pin) { const pin = state.pinBuf; state.pinBuf = ''; state.msg = null; render();
+        try { state.today = { who: state.selStaff, list: await openVisits(pin) }; } catch (e) { console.warn(e); state.today = { who: state.selStaff, list: [] }; } go('today'); }
+      else { state.pinBuf = ''; state.msg = { type: 'err', text: T('badPin') }; render(); }
+      return;
+    }
     const st = state.config.staff.find(x => x.id === state.selStaff);
     if (st && state.pinBuf === st.pin) { state.pinBuf = ''; state.provider.staffId = st.id; state.provider.spec = null; go('provider'); }
     else { state.pinBuf = ''; state.msg = { type: 'err', text: T('badPin') }; render(); }
   },
-  pinCancel() { state.pinBuf = ''; if (state.pinTarget === 'settings') return go('start'); const many = state.config.staff.filter(isClinician).length > 1; go(many ? 'selectStaff' : 'handoff'); },
+  pinCancel() { state.pinBuf = ''; if (state.pinTarget === 'settings') return go('start'); if (state.pinTarget === 'today') return go('todayWho'); const many = state.config.staff.filter(isClinician).length > 1; go(many ? 'selectStaff' : 'handoff'); },
   exportPdf() { startExport('save'); },
   printPdf() { startExport('print'); },
   expShare() { if (canShareFile()) sharePdf(); },
@@ -650,7 +768,19 @@ const actions = {
   expOpen() { openPdfTab(); },
   expOpenHere() { if (confirm(T('expOpenHereConfirm'))) { const u = exp.url; state.patient = newPatient(); state.provider = newProvider(); location.href = u; } },
   expBack() { hideExport(); },
-  expDone() { wipe('done'); },
+  expPrint() { try { printNow(); showExport('printDialog'); } catch (e) { showExport('printFail', e); } },
+  expDone() { if (state.screen === 'visitView') { hideExport(); return; } storeVisit().catch(() => {}).finally(() => wipe('done')); },
+  todayAccess() { state.pinBuf = ''; state.selStaff = null; go('todayWho'); },
+  todayPick(el) { state.selStaff = el.dataset.val; state.pinTarget = 'today'; state.pinBuf = ''; go('pin'); },
+  todayClose() { state.today = null; state.viewRec = null; kekCache.clear(); go('start'); },
+  openVisit(el) { const r = state.today && state.today.list.find(x => x.id === el.dataset.val); if (r) { state.viewRec = { id: r.id, ...r.rec }; go('visitView'); } },
+  backToday() { hideExport(); state.viewRec = null; go('today'); },
+  viewPrint() { const r = state.viewRec; try { const pv = document.getElementById('printView'); pv.innerHTML = withRecord(r, () => buildPrintHtml(r.lang)); document.body.classList.add('printing'); window.print(); showExport('printDialog'); } catch (e) { showExport('printFail', e); } },
+  viewExport() { const r = state.viewRec; try { let blob; if (r.pdf) blob = new Blob([unb64(r.pdf)], { type: 'application/pdf' }); else blob = withRecord(r, () => buildPdf(r.lang)).output('blob');
+      if (exp && exp.url) URL.revokeObjectURL(exp.url); const name = r.pdfName || pdfName(r.lang); let file = null; try { file = new File([blob], name, { type: 'application/pdf' }); } catch (e) {}
+      exp = { url: URL.createObjectURL(blob), blob, name, file, lang: r.lang, size: blob.size };
+      if (state.device !== 'desktop' && canShareFile()) { showExport('sharing'); return sharePdf(); } downloadPdf(); showExport('downloaded'); } catch (e) { showExport('error', e); } },
+  async wipeAllVisits() { if (!confirm(T('closeDayConfirm'))) return; await wipeAllVisits(); state.today && (state.today.list = []); state.viewRec = null; toast(T('closeDayDone')); render(); },
   cancelVisit() { if (confirm(T('confirmCancel'))) wipe('start'); },
   nextPatient() { go('start'); },
   idleKeep() { hideIdle(); state.lastActivity = Date.now(); }
